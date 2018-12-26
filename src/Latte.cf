@@ -24,7 +24,7 @@ BStmt.     Stmt ::= Block ;
 
 Decl.      Stmt ::= Type [Item] ";" ;
 
-NoInit.    Item ::= Ident ; 
+NoInit.    Item ::= Ident ;
 
 Init.      Item ::= Ident "=" Expr ;
 
@@ -93,6 +93,8 @@ EOr.       Expr ::= Expr1 "||" Expr ;
 coercions  Expr 6 ;
 
 separator  Expr "," ;
+
+internal ECon. Expr3 ::= Expr3 "+" Expr4 ;
 
 -- operators -----------------------------------------------
 

@@ -64,6 +64,7 @@ transExpr x = case x of
   ERel _ expr1 relop expr2 -> failure x
   EAnd _ expr1 expr2 -> failure x
   EOr _ expr1 expr2 -> failure x
+  ECon _ expr1 expr2 -> failure x
 transAddOp :: Show a => AddOp a -> Result
 transAddOp x = case x of
   Plus _ -> failure x

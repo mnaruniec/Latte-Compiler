@@ -8,7 +8,9 @@ import qualified Data.List as L
 import Control.Monad.Reader
 import Control.Monad.Writer
 
-type Location = Maybe (Int, Int)
+import CommonLatte
+
+
 type ErrorList = DList String
 
 type PEnv = M.Map Ident (Type ())
@@ -23,7 +25,11 @@ minInt :: Integer
 minInt = -(2 ^ 31)
 
 
-(!?) = flip M.lookup
+returnE :: a -> TypeMonad (Env, a)
+returnE x = do
+  env <- ask
+  return (env, x)
+
 
 tellL :: [a] -> Writer (DList [a]) ()
 tellL = tell . singleton
@@ -31,9 +37,6 @@ tellL = tell . singleton
 tellLoc :: Location -> String -> Writer ErrorList ()
 tellLoc Nothing l = tellL l
 tellLoc (Just (line, col)) l = tellL $ "Line " ++ show line ++ ":" ++ show col ++ ": " ++ l
-
-strip :: Functor f => f a -> f ()
-strip = ((\_ -> ()) <$>)
 
 
 checkDuplicates :: Ord b => (a -> b) -> (a -> Writer ErrorList ()) -> [a] -> Writer ErrorList ()
@@ -45,21 +48,8 @@ checkDuplicates key printer l = sequence_ $ foldl f (S.empty, return ()) l where
       else monad
     set' = S.insert key' set
 
-builtInDefs = [prIDef, prStrDef, errDef, reIDef, reStrDef] where
-  loc = Just (-1, -1)
-  prIDef = FnDef loc (Void loc) (Ident "printInt")
-    [Arg loc (Int loc) (Ident "n")] (Block loc [Empty loc])
-  prStrDef = FnDef loc (Void loc) (Ident "printString")
-    [Arg loc (Str loc) (Ident "str")] (Block loc [Empty loc])
-  errDef = FnDef loc (Void loc) (Ident "error")
-    [] (Block loc [Empty loc])
-  reIDef = FnDef loc (Int loc) (Ident "readInt")
-    [] (Block loc [Empty loc])
-  reStrDef = FnDef loc (Str loc) (Ident "readString")
-    [] (Block loc [Empty loc])
 
-
-checkTypes :: Program (Location) -> Writer ErrorList ()
+checkTypes :: Program Location -> Writer ErrorList ()
 checkTypes (Program _ topDefs) = do
   sequence_ $ checkSignature <$> topDefs
 
@@ -126,12 +116,6 @@ checkBlock (Block _ stmts) = do
     checkBlock' returning' [] = return returning'
 
 
-returnE :: a -> TypeMonad (Env, a)
-returnE x = do
-  env <- ask
-  return (env, x)
-
-
 checkStmt :: Stmt Location -> TypeMonad (Env, Bool)
 checkStmt (Empty _) = returnE False
 
@@ -150,23 +134,81 @@ checkStmt (Ret loc expr) = do
       " from function " ++ id ++ " of return type " ++ show t ++ "!"
   returnE True
 
-checkStmt _ = returnE False
+checkStmt (BStmt _ block) = checkBlock block >>= returnE
+
+checkStmt (SExp _ expr) = do
+  checkExpr expr
+  returnE False
+
+checkStmt (CondElse _ expr stmt1 stmt2) = do
+  assertType (Bool ()) expr
+  (_, ret1) <- checkStmt stmt1
+  (_, ret2) <- checkStmt stmt2
+  returnE $ ret1 && ret2
+
+checkStmt (Cond _ expr stmt) = do
+  assertType (Bool ()) expr
+  checkStmt stmt
+  returnE False
+
+checkStmt (While _ expr stmt) = do
+  assertType (Bool ()) expr
+  checkStmt stmt
+  returnE False
 
 
-getLoc :: Expr a -> a
-getLoc (EVar l _) = l
-getLoc (ELitInt l _) = l
-getLoc (ELitTrue l) = l
-getLoc (ELitFalse l) = l
-getLoc (EApp l _ _) = l
-getLoc (EString l _) = l
-getLoc (Neg l _) = l
-getLoc (Not l _) = l
-getLoc (EMul l _ _ _) = l
-getLoc (EAdd l _ _ _) = l
-getLoc (ERel l _ _ _) = l
-getLoc (EAnd l _ _) = l
-getLoc (EOr l _ _) = l
+checkStmt (Decl _ _ []) = returnE False
+
+checkStmt (Decl l t (item:tail)) = do
+  let t' = strip t
+  when (t' == Void ()) $ lift $ tellLoc l $ "Cannot create variables of type void!"
+
+  Env pEnv vEnv curr <- ask
+
+  (loc, id) <- case item of
+    NoInit loc (Ident id) -> return (loc, id)
+    Init loc (Ident id) expr -> do
+      assertType t' expr
+      return (loc, id)
+
+  case vEnv !? (Ident id) of
+    Just (_, True) -> lift $ tellLoc loc $ "Found duplicate variable " ++ id ++ " declaration in a single block!"
+    otherwise -> return ()
+
+  let vEnv' = M.insert (Ident id) (t', True) vEnv
+  let env' = Env pEnv vEnv' curr
+
+  local (\_ -> env') $ checkStmt (Decl l t tail)
+
+checkStmt ass@(Ass _ _ expr) =
+  assWithMsg (\t -> assertType t expr) ass
+
+checkStmt ass@(Incr loc (Ident id)) =
+  assWithMsg handler ass where
+    handler t =
+      when (t /= Int ()) $ lift $ tellLoc loc $
+        "Cannot increment variable " ++ id ++ " of type " ++ show t ++ "!"
+
+checkStmt ass@(Decr loc (Ident id)) =
+  assWithMsg handler ass where
+    handler t =
+      when (t /= Int ()) $ lift $ tellLoc loc $
+        "Cannot decrement variable " ++ id ++ " of type " ++ show t ++ "!"
+
+
+
+assWithMsg :: (Type () -> TypeMonad ()) -> Stmt Location -> TypeMonad (Env, Bool)
+assWithMsg handler (Ass loc (Ident id) expr) = do
+  vEnv <- asks vEnv
+  case vEnv !? Ident id of
+    Nothing -> do
+      lift $ tellLoc loc $ "Variable " ++ id ++ " not declared!"
+      checkExpr expr
+      return ()
+    Just (t, _) -> do
+      handler t
+  returnE False
+
 
 assertAny :: [Type ()] -> Expr Location -> TypeMonad (Type ())
 assertAny ts expr = do

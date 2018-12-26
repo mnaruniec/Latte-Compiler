@@ -93,6 +93,7 @@ data Expr a
     | ERel a (Expr a) (RelOp a) (Expr a)
     | EAnd a (Expr a) (Expr a)
     | EOr a (Expr a) (Expr a)
+    | ECon a (Expr a) (Expr a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor Expr where
@@ -110,6 +111,7 @@ instance Functor Expr where
         ERel a expr1 relop expr2 -> ERel (f a) (fmap f expr1) (fmap f relop) (fmap f expr2)
         EAnd a expr1 expr2 -> EAnd (f a) (fmap f expr1) (fmap f expr2)
         EOr a expr1 expr2 -> EOr (f a) (fmap f expr1) (fmap f expr2)
+        ECon a expr1 expr2 -> ECon (f a) (fmap f expr1) (fmap f expr2)
 data AddOp a = Plus a | Minus a
   deriving (Eq, Ord, Show, Read)
 
