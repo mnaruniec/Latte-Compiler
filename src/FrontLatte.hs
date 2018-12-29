@@ -10,7 +10,7 @@ import CommonLatte
 import TypeLatte
 import PrintLatte
 import VarsLatte
-
+import QuadLatte
 
 
 
@@ -21,7 +21,8 @@ frontEnd p = do
   if errors /= []
     then do
       putStrLn $ show errors
-    else
-      putStrLn $ printTree $ uniqueVars p
-
+    else do
+      let newTree = uniqueVars p
+      putStrLn $ printTree newTree
+      putStrLn $ show $ genQuad newTree
 

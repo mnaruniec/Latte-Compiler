@@ -96,9 +96,9 @@ checkTypes (Program _ topDefs) = do
       let env = Env {pEnv = pEnv, vEnv = vEnv, curr = (Ident id, strip t)}
 
       returning <- runReaderT (checkBlock block) env
-      when (not returning) $ tellLoc loc $ unlines
-        ["Function " ++ id ++ " might not return!",
-         "Please add return at its end, even if it is redundant."]
+      when ((not returning) && strip t /= Void ()) $ tellLoc loc $
+        "Function " ++ id ++ " might not return!\n" ++
+          "Please add return at its end, even if it is redundant."
 
 
 checkBlock :: Block Location -> TypeMonad Bool
