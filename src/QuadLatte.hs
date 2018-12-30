@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module QuadLatte where
 
 import Data.DList
@@ -6,6 +8,7 @@ import qualified Data.Set as S
 import qualified Data.List as L
 import Control.Monad.State
 import Control.Monad.Writer
+import Text.Read (readMaybe)
 
 import AbsLatte
 import CommonLatte
@@ -13,24 +16,57 @@ import CommonLatte
 data Atom =
     CInt Integer
   | CString String
-  | CBool Bool -- might not need
+  | CTrue
+  | CFalse
   | Var String
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
+
+instance Show Atom where
+  show (CInt n) = show n
+  show (CString str) = show str
+  show (CTrue) = "True"
+  show (CFalse) = "False"
+  show (Var str) = str
 
 data Cond =
     Comp Atom (RelOp ()) Atom
-  | VarTrue Atom
-  | VarFalse Atom
-  deriving (Eq, Ord, Show)
+  | ValTrue Atom
+  | ValFalse Atom
+  deriving (Eq, Ord)
+
+instance Show Cond where
+  show (Comp a1 rel a2) = show a1 ++ " " ++ show rel ++ " " ++ show a2
+  show (ValTrue a) = show a
+  show (ValFalse a) = "!(" ++ show a ++ ")"
+
+data Label =
+    LNum Integer
+  | LFun String
+  deriving (Eq, Ord)
+
+instance Show Label where
+  show (LNum n) = "L" ++ show n
+  show (LFun str@(h:t)) =
+    let rm = readMaybe t :: Maybe Integer in
+      if h == 'L' && rm /= Nothing
+        then "func_" ++ str
+        else str
 
 data Op = QPlus | QMinus | QTimes | QDiv | QMod | QCon
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
+
+instance Show Op where
+  show (QPlus) = "+"
+  show (QMinus) = "-"
+  show (QTimes) = "*"
+  show (QDiv) = "/"
+  show (QMod) = "%"
+  show (QCon) = "++"
 
 data Quad =
     QAss Atom Atom
-  | QJmp Integer
-  | QJCond Comp Integer
-  | QParam Int Atom
+  | QJmp Label
+  | QJCond Cond Label
   | QVRet
   | QRet Atom
   | QNOp
@@ -38,17 +74,45 @@ data Quad =
   | QDecr Atom
   | QNeg Atom Atom
   | QOp Atom Atom Op Atom
-  deriving (Eq, Ord, Show)
+  | QCall Atom Label [Atom]
+  | QVCall Label [Atom]
+  deriving (Eq, Ord)
+
+instance Show Quad where
+  show (QAss a1 a2) = show a1 ++ " := " ++ show a2
+  show (QJmp l) = "goto " ++ show l
+  show (QJCond c l) = "if (" ++ show c ++ ") goto " ++ show l
+  show (QVRet) = "return"
+  show (QRet a) = "return " ++ show a
+  show (QNOp) = "nop"
+  show (QIncr a) = show a ++ "++"
+  show (QDecr a) = show a ++ "--"
+  show (QNeg a1 a2) = show a1 ++ " := -(" ++ show a2 ++ ")"
+  show (QOp a1 a2 op a3) =
+    show a1 ++ " := " ++ show a2 ++ " " ++ show op ++ " " ++ show a3
+  show (QCall a l as) = show a ++ " := " ++ show l ++ "(" ++ show as ++ ")"
+  show (QVCall l as) = show l ++ "(" ++ show as ++ ")"
+
 
 data LQuad =
     NoL Quad
-  | Lab Integer Quad
-  deriving (Eq, Ord, Show)
+  | Lab Label Quad
+  deriving (Eq, Ord)
+
+instance Show LQuad where
+  show (NoL q) = show q
+  show (Lab l q) = show l ++ ": " ++ show q
 
 
 data Context = Context {nextVar :: Integer, nextLab :: Integer}
 
 type QuadMonad a = StateT Context (Writer (DList LQuad)) a
+
+
+defVal :: Type a -> Expr a
+defVal (Int a) = ELitInt a 0
+defVal (Str a) = EString a ""
+defVal (Bool a) = ELitFalse a
 
 
 neg :: RelOp a -> RelOp a
@@ -70,44 +134,47 @@ minInt = -(2 ^ 31)
 emit :: LQuad -> QuadMonad ()
 emit = tell . singleton
 
-emitLab :: Integer -> Quad -> QuadMonad ()
+emitLab :: Label -> Quad -> QuadMonad ()
 emitLab l q = emit $ Lab l q
 
-emitMLab :: Maybe Integer -> Quad -> QuadMonad ()
+emitMLab :: Maybe Label -> Quad -> QuadMonad ()
 emitMLab ml q =
   case ml of
     Nothing -> emit $ NoL q
     Just l -> emitLab l q
 
-getLab :: QuadMonad Integer
+getLab :: MonadState Context m => m Label
 getLab = do
   Context nV nL <- get
   put $ Context nV (nL + 1)
-  return nL
+  return $ LNum nL
 
-getVarNum :: QuadMonad Integer
+getVarNum :: MonadState Context m => m Integer
 getVarNum = do
   Context nV nL <- get
   put $ Context (nV + 1) nL
   return nV
 
-getVar :: QuadMonad Atom
+getVar :: MonadState Context m => m Atom
 getVar = do
   n <- getVarNum
   return $ Var $ "t" ++ show n
 
 
-genQuad :: Program () -> [(TopDef (), [LQuad])]
-genQuad (Program _ topDefs) =
-  zip topDefs $ quadFn <$> topDefs where
-    --TODO label at beginning, retV at end, unique labels
-    quadFn (FnDef _ _ _ _ block) = toList $
-      execWriter (runStateT (quadBlock Nothing block) startContext)
+genQuad :: Program () -> (Context, [(TopDef (), [LQuad])])
+genQuad (Program _ topDefs) = (ctx, zip topDefs quadCodes) where
+  (ctx, quadCodes) = L.foldr quadFn (startContext, []) topDefs
+  quadFn (FnDef _ t (Ident id) _ block) (ctx, tail) =
+    (ctx', (toList $ dl'):tail)
+    where
+      (((), ctx'), dl) = runWriter (runStateT (quadBlock (Just $ LFun id) block) ctx)
+      dl' = if (t == Void ()) then dl `mappend` (fromList [NoL QVRet]) else dl
 
-    startContext = Context 0 0
+  startContext = Context 0 0
 
 
-quadBlock :: Maybe Integer -> Block () -> QuadMonad ()
+
+quadBlock :: Maybe Label -> Block () -> QuadMonad ()
 quadBlock mLab (Block () (stmt:t)) = do
   quadStmt mLab stmt
   quadBlock Nothing $ Block () t
@@ -115,30 +182,32 @@ quadBlock mLab (Block () (stmt:t)) = do
 quadBlock _ (Block () []) = return ()
 
 
-quadCondJump :: Maybe Integer -> Integer -> Integer -> Integer -> Expr () -> QuadMonad ()
+quadCondJump :: Maybe Label -> Label -> Label -> Label -> Cond -> QuadMonad ()
 quadCondJump mLab lThen lElse lNext comp@(Comp a1 rel a2)
   | lThen == lNext = do
-      emitMLab mLab $ JCond (Comp a1 (neg rel) a2) lElse
+      emitMLab mLab $ QJCond (Comp a1 (neg rel) a2) lElse
   | lElse == lNext = do
-      emitMLab mLab $ JCond comp lThen
+      emitMLab mLab $ QJCond comp lThen
   | otherwise = do
-      emitMLab mLab $ JCond comp lThen
-      emit $ NoL $ Jmp lElse
+      emitMLab mLab $ QJCond comp lThen
+      l <- getLab
+      emitLab l $ QJmp lElse
 
-quadCondJump mLab lThen lElse lNext cond@(VarTrue (Var id))
+quadCondJump mLab lThen lElse lNext cond@(ValTrue a)
   | lThen == lNext = do
-      emitMLab mLab $ JCond (VarFalse $ Var id) lElse
+      emitMLab mLab $ QJCond (ValFalse $ a) lElse
   | lElse == lNext = do
-      emitMLab mLab $ JCond cond lThen
+      emitMLab mLab $ QJCond cond lThen
   | otherwise = do
-      emitMLab mLab $ JCond cond lThen
-      emit $ NoL $ Jmp lElse
+      emitMLab mLab $ QJCond cond lThen
+      l <- getLab
+      emitLab l $ QJmp lElse
 
 
 
 
 
-quadCond :: Maybe Integer -> Integer -> Integer -> Integer -> Expr () -> QuadMonad ()
+quadCond :: Maybe Label -> Label -> Label -> Label -> Expr () -> QuadMonad ()
 quadCond mLab lThen lElse lNext (Neg () cond) =
   quadCond mLab lElse lThen lNext cond
 
@@ -157,26 +226,35 @@ quadCond mLab lThen lElse lNext (ERel () e1 rel e2) = do
 quadCond mLab lThen lElse lNext (EAnd () c1 c2) = do
   lMid <- getLab
   quadCond mLab lMid lElse lMid c1
---TODO check if mLab can be not assigned
   quadCond (Just lMid) lThen lElse lNext c2
 
 quadCond mLab lThen lElse lNext (EOr () c1 c2) = do
   lMid <- getLab
   quadCond mLab lThen lMid lMid c1
---TODO check if mLab can be not assigned
   quadCond (Just lMid) lThen lElse lNext c2
 
---TODO might move to any expr pattern
-quadCond mLab lThen lElse lNext (EVar () (Ident id)) =
-  quadCondJump mLab lThen lElse lNext $ VarTrue $ Var id
-
-quadCond mLab lThen lElse lNext expr =
+quadCond mLab lThen lElse lNext expr = do
   (mLab', a1) <- quadExpr mLab expr
-  quadCondJump mLab' lThen lElse lNext $ VarTrue a1
---TODO check if there can be non Var atoms
+  quadCondJump mLab' lThen lElse lNext $ ValTrue a1
 
 
-quadStmt :: Maybe Integer -> Stmt () -> QuadMonad ()
+quadStmt :: Maybe Label -> Stmt () -> QuadMonad ()
+
+
+quadStmt mLab (Decl () t (item:tail)) = do
+  let (id, expr) = case item of
+        NoInit () id -> (id, defVal t)
+        Init () id expr -> (id, expr)
+
+  quadStmt mLab (Ass () id expr)
+  quadStmt Nothing (Decl () t tail)
+
+quadStmt _ (Decl () _ []) = return ()
+
+quadStmt mLab (Ass () (Ident id) expr) = do
+  (mLab', a) <- quadExpr mLab expr
+  emitMLab mLab' $ QAss (Var id) a
+
 quadStmt mLab (While () cond stmt) = do
   condLab <- getLab
   stmtLab <- getLab
@@ -184,6 +262,7 @@ quadStmt mLab (While () cond stmt) = do
   emitMLab mLab $ QJmp condLab
   quadStmt (Just stmtLab) stmt
   quadCond (Just condLab) stmtLab afterLab afterLab cond
+  emitLab afterLab QNOp
 
 
 quadStmt mLab (Empty ()) =
@@ -200,11 +279,36 @@ quadStmt mLab (Decr () (Ident id)) =
 quadStmt mLab (VRet ()) =
   emitMLab mLab $ QVRet
 
+quadStmt mLab (Ret () expr) = do
+  (mLab', a) <- quadExpr mLab expr
+  emitMLab mLab' $ QRet a
 
-quadStmt mLab stmt = return ()
+quadStmt mLab (CondElse () cond s1 s2) = do
+  trueLab <- getLab
+  falseLab <- getLab
+  afterLab <- getLab
+  quadCond mLab trueLab falseLab trueLab cond
+  quadStmt (Just trueLab) s1
+  emit $ NoL $ QJmp afterLab
+  quadStmt (Just falseLab) s2
+  emitLab afterLab QNOp
+
+quadStmt mLab (Cond () cond stmt) = do
+  trueLab <- getLab
+  falseLab <- getLab
+  quadCond mLab trueLab falseLab trueLab cond
+  quadStmt (Just trueLab) stmt
+  emitLab falseLab QNOp
+
+quadStmt mLab (SExp () expr) = do
+  (mLab', a) <- quadExpr mLab expr
+  emitMLab mLab' QNOp
 
 
-quadExpr :: Maybe Integer -> Expr () -> QuadMonad (Maybe Integer, Atom)
+
+
+
+quadExpr :: Maybe Label -> Expr () -> QuadMonad (Maybe Label, Atom)
 quadExpr mLab (EVar () (Ident id)) = return (mLab, Var id)
 
 quadExpr mLab (ELitInt () n) = return (mLab, CInt n)
@@ -221,9 +325,9 @@ quadExpr mLab (EMul () e1 op e2) = do
   (mLab', a1) <- quadExpr mLab e1
   (mLab'', a2) <- quadExpr mLab' e2
   let op' = case op of
-    Times () -> QTimes
-    Div () -> QDiv
-    Mod () -> QMod
+        Times () -> QTimes
+        Div () -> QDiv
+        Mod () -> QMod
   v <- getVar
   emitMLab mLab'' $ QOp v a1 op' a2
   return (Nothing, v)
@@ -232,8 +336,8 @@ quadExpr mLab (EAdd () e1 op e2) = do
   (mLab', a1) <- quadExpr mLab e1
   (mLab'', a2) <- quadExpr mLab' e2
   let op' = case op of
-    Plus () -> QPlus
-    Minus () -> QMinus
+        Plus () -> QPlus
+        Minus () -> QMinus
   v <- getVar
   emitMLab mLab'' $ QOp v a1 op' a2
   return (Nothing, v)
@@ -245,7 +349,42 @@ quadExpr mLab (ECon () e1 e2) = do
   emitMLab mLab'' $ QOp v a1 QCon a2
   return (Nothing, v)
 
---quadExpr mLab (EMul () e1
+quadExpr mLab (EApp () (Ident id) es) = do
+  (mLab', args) <- quadArg mLab es
+  v <- getVar
+  emitMLab mLab' $ QCall v (LFun id) args
+  return (Nothing, v)
+  where
+    quadArg mLab (expr:t) = do
+      (mLab', as) <- quadArg mLab t
+      (mLab'', a) <- quadExpr mLab' expr
+      return (mLab'', a:as)
 
+    quadArg mLab [] = return (mLab, [])
+
+
+quadExpr mLab (ELitTrue ()) = return (mLab, CTrue)
+
+quadExpr mLab (ELitFalse ()) = return (mLab, CFalse)
+
+quadExpr mLab (Not () (ELitTrue ())) =
+  quadExpr mLab $ ELitFalse ()
+
+quadExpr mLab (Not () (ELitFalse ())) =
+  quadExpr mLab $ ELitTrue ()
+
+quadExpr mLab (Not () (Not () expr)) =
+  quadExpr mLab expr
+
+quadExpr mLab cond = do
+  lTrue <- getLab
+  lFalse <- getLab
+  lAfter <- getLab
+  v <- getVar
+  quadCond mLab lTrue lFalse lTrue cond
+  emitLab lTrue $ QAss v $ CTrue
+  emitLab lFalse $ QAss v $ CFalse
+  emitLab lAfter QNOp
+  return (Nothing, v)
 
 

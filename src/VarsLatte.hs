@@ -205,13 +205,15 @@ uniqueExpr (EApp _ id es) = do
   let (_, es'') = L.unzip es'
   return $ (t, EApp () id es'')
 
-uniqueExpr e@(EString _ _) = return $ (Str (), strip e)
+
+uniqueExpr e@(EString _ str) = return $ (Str (), EString () $ removeQuotes str)
 
 uniqueExpr e@(ELitInt _ _) = return $ (Int (), strip e)
 
 uniqueExpr e = return $ (Bool (), strip e)
 
-
+removeQuotes :: String -> String
+removeQuotes = init . tail
 
 
 

@@ -40,7 +40,7 @@ run v p s = let ts = myLLexer s in case p ts of
                           putStrLn s
                           exitFailure
            Ok  tree -> do putStrLn "\nParse Successful!"
-                          showTree v tree
+                          --showTree v tree
                           frontEnd tree
                           exitSuccess
 
