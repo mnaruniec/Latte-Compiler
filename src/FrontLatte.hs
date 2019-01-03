@@ -12,7 +12,8 @@ import PrintLatte
 import VarsLatte
 import QuadLatte
 import GraphLatte
-
+import NopLatte
+import EdgeLatte
 
 printList :: Show a => [a] -> IO ()
 printList l = do
@@ -24,10 +25,14 @@ printBlockFun (FnDef _ _ (Ident id) _ _, blocks) = do
   sequence_ $ printQBlock <$> blocks
   putStrLn ""
 
+printQBlock :: QBlock -> IO ()
 printQBlock (lab, quads) = do
   putStrLn $ show lab ++ ":"
   sequence_ $ putStrLn . show <$> quads
   putStrLn ""
+
+printQCode :: [BlockFun] -> IO ()
+printQCode = sequence_ . (printBlockFun <$>)
 
 
 frontEnd :: Program Location -> IO ()
@@ -44,5 +49,11 @@ frontEnd p = do
       sequence_ $ printList . snd <$> quadCode
       let blockFuns = quadToBlocks ctx quadCode
       putStrLn "\n\n"
-      sequence_ $ printBlockFun <$> blockFuns
+      printQCode blockFuns
+      let blockFuns' = removeNops blockFuns
+      putStrLn "\n\nAfter nop elimination:\n"
+      printQCode blockFuns'
+
+      let edges = findEdges blockFuns'
+      putStrLn $ show edges
 
