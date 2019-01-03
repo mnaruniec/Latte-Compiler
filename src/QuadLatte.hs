@@ -24,8 +24,8 @@ data Atom =
 instance Show Atom where
   show (CInt n) = show n
   show (CString str) = show str
-  show (CTrue) = "True"
-  show (CFalse) = "False"
+  show (CTrue) = "true"
+  show (CFalse) = "false"
   show (Var str) = str
 
 data Cond =
@@ -208,15 +208,15 @@ quadCondJump mLab lThen lElse lNext cond@(ValTrue a)
 
 
 quadCond :: Maybe Label -> Label -> Label -> Label -> Expr () -> QuadMonad ()
-quadCond mLab lThen lElse lNext (Neg () cond) =
+quadCond mLab lThen lElse lNext (Not () cond) =
   quadCond mLab lElse lThen lNext cond
 
 
 quadCond mLab lThen _ lNext (ELitTrue ()) =
-  emitMLab mLab $ if (lThen == lNext) then QNOp else QJmp lNext
+  emitMLab mLab $ if (lThen == lNext) then QNOp else QJmp lThen
 
 quadCond mLab lThen lElse lNext (ELitFalse ()) =
-  quadCond mLab lThen lElse lNext (Neg () $ ELitTrue ())
+  quadCond mLab lThen lElse lNext (Not () $ ELitTrue ())
 
 quadCond mLab lThen lElse lNext (ERel () e1 rel e2) = do
   (mLab', a1) <- quadExpr mLab e1

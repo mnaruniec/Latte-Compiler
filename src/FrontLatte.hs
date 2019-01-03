@@ -14,6 +14,8 @@ import QuadLatte
 import GraphLatte
 import NopLatte
 import EdgeLatte
+import NodeLatte
+
 
 printList :: Show a => [a] -> IO ()
 printList l = do
@@ -54,6 +56,14 @@ frontEnd p = do
       putStrLn "\n\nAfter nop elimination:\n"
       printQCode blockFuns'
 
-      let edges = findEdges blockFuns'
-      putStrLn $ show edges
+      let connections = findEdges blockFuns'
+      putStrLn $ show connections
+      putStrLn "\n\n"
+      let reachable = reachableLabels connections blockFuns'
+      putStrLn $ show reachable
+
+      let blockFuns'' = removeUnreachable connections blockFuns'
+      putStrLn "\n\n"
+      printQCode blockFuns''
+
 
