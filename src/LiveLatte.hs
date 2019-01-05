@@ -136,10 +136,6 @@ getKillUse (QJCond cond _) = ([], getUse cond)
 
 getKillUse (QRet a) = ([], [a])
 
-getKillUse (QIncr a) = ([a], [a])
-
-getKillUse (QDecr a) = ([a], [a])
-
 getKillUse (QNeg a1 a2) = ([a1], [a2])
 
 getKillUse (QOp a1 a2 _ a3) = ([a1], [a2, a3])

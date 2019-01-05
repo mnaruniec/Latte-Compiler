@@ -19,6 +19,7 @@ data Atom =
   | CTrue
   | CFalse
   | Var String
+  | Undef
   deriving (Eq, Ord)
 
 instance Show Atom where
@@ -27,6 +28,7 @@ instance Show Atom where
   show (CTrue) = "true"
   show (CFalse) = "false"
   show (Var str) = str
+  show (Undef) = "UNDEF"
 
 data Cond =
     Comp Atom (RelOp ()) Atom
@@ -70,12 +72,11 @@ data Quad =
   | QVRet
   | QRet Atom
   | QNOp
-  | QIncr Atom
-  | QDecr Atom
   | QNeg Atom Atom
   | QOp Atom Atom Op Atom
   | QCall Atom Label [Atom]
   | QVCall Label [Atom]
+  | QPhi Atom [(Atom, Label)]
   deriving (Eq, Ord)
 
 instance Show Quad where
@@ -85,14 +86,12 @@ instance Show Quad where
   show (QVRet) = "return"
   show (QRet a) = "return " ++ show a
   show (QNOp) = "nop"
-  show (QIncr a) = show a ++ "++"
-  show (QDecr a) = show a ++ "--"
   show (QNeg a1 a2) = show a1 ++ " := -(" ++ show a2 ++ ")"
   show (QOp a1 a2 op a3) =
     show a1 ++ " := " ++ show a2 ++ " " ++ show op ++ " " ++ show a3
   show (QCall a l as) = show a ++ " := " ++ show l ++ "(" ++ show as ++ ")"
   show (QVCall l as) = show l ++ "(" ++ show as ++ ")"
-
+  show (QPhi a rs) = show a ++ " := phi " ++ show rs
 
 data LQuad =
     NoL Quad
@@ -270,11 +269,13 @@ quadStmt mLab (Empty ()) =
 
 quadStmt mLab (BStmt () block) = quadBlock mLab block
 
-quadStmt mLab (Incr () (Ident id)) =
-  emitMLab mLab $ QIncr $ Var id
+quadStmt mLab (Incr () (Ident id)) = do
+  let v = Var id
+  emitMLab mLab $ QOp v v QPlus $ CInt 1
 
-quadStmt mLab (Decr () (Ident id)) =
-  emitMLab mLab $ QDecr $ Var id
+quadStmt mLab (Decr () (Ident id)) = do
+  let v = Var id
+  emitMLab mLab $ QOp v v QMinus $ CInt 1
 
 quadStmt mLab (VRet ()) =
   emitMLab mLab $ QVRet

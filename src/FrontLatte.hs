@@ -17,6 +17,7 @@ import EdgeLatte
 import NodeLatte
 import ToGraphLatte
 import LiveLatte
+import SSALatte
 
 
 printList :: Show a => [a] -> IO ()
@@ -78,6 +79,12 @@ frontEnd p = do
       let liveMap = getLive graph
       putStrLn "\n\n"
       putStrLn $ show liveMap
+
+      let ssaGraph = makeSSA graph liveMap
+
+      putStrLn "\n\n"
+      printQCode $ fst $ fromGraph ssaGraph
+
 
 
 
