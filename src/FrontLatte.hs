@@ -15,6 +15,8 @@ import GraphLatte
 import NopLatte
 import EdgeLatte
 import NodeLatte
+import ToGraphLatte
+import LiveLatte
 
 
 printList :: Show a => [a] -> IO ()
@@ -65,5 +67,17 @@ frontEnd p = do
       let blockFuns'' = removeUnreachable connections blockFuns'
       putStrLn "\n\n"
       printQCode blockFuns''
+      let connections' = findEdges blockFuns''
+      putStrLn "\n"
+      putStrLn $ show connections'
+
+      let graph = toGraph blockFuns'' connections'
+      putStrLn "\n\n"
+      putStrLn $ show graph
+
+      let liveMap = getLive graph
+      putStrLn "\n\n"
+      putStrLn $ show liveMap
+
 
 
