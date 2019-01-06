@@ -101,16 +101,16 @@ applySubsQuad (QPhi a rs) = do
           return (a', lab)) <$> rs
       return (Just $ QPhi a rs', rs /= rs')
 
-applySubsQuad (QJCond cond lab) = do
+applySubsQuad (QJCond cond l1 l2) = do
   cond' <- applySubsCond cond
   if cond' == true
     then
-      return (Just $ QJmp lab, True)
+      return (Just $ QJmp l1, True)
     else if cond' == false
       then
-        return (Nothing, True)
+        return (Just $ QJmp l2, True)
       else
-        return (Just $ QJCond cond' lab, cond /= cond')
+        return (Just $ QJCond cond' l1 l2, cond /= cond')
 
 applySubsQuad q = return (Just q, False)
 

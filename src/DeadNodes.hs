@@ -65,8 +65,8 @@ allLabels funs = concat $ allLabelsFun <$> funs where
 getNeighbours :: Label -> Conns -> [Label]
 getNeighbours lab conns = neighbours where
   edges = succs conns
-  neighbourMap = M.findWithDefault M.empty lab edges
-  neighbours = fst $ unzip $ M.toList neighbourMap
+  neighbourSet = M.findWithDefault S.empty lab edges
+  neighbours = S.toList neighbourSet
 
 
 unvisitedNeighbours :: Label -> DfsMonad [Label]

@@ -15,24 +15,8 @@ import GraphForm
 import LiveVars
 import SSA
 import AtomFold
+import Optimize
 
-
-
-
-printQuadFun :: QuadFun -> IO ()
-printQuadFun (FnDef _ _ (Ident id) _ _, blocks) = do
-  putStrLn $ "Function " ++ id ++ ":\n"
-  sequence_ $ printQuadBlock <$> blocks
-  putStrLn ""
-
-printQuadBlock :: QuadBlock -> IO ()
-printQuadBlock (lab, quads) = do
-  putStrLn $ show lab ++ ":"
-  sequence_ $ putStrLn . show <$> quads
-  putStrLn ""
-
-printQCode :: [QuadFun] -> IO ()
-printQCode = sequence_ . (printQuadFun <$>)
 
 
 backEnd :: Program () -> IO ()
@@ -68,10 +52,9 @@ backEnd p = do
       putStrLn "\n\n"
       printQCode $ fst $ fromGraph ssaGraph
 
-      let optGraph = fst $ foldAtoms ssaGraph
+      optGraph <- optimize ssaGraph
+      putStrLn "\n\n"
       printQCode $ fst $ fromGraph optGraph
-
-
 
 
 

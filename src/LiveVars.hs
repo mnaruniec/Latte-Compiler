@@ -80,7 +80,7 @@ getLiveQuad end q = beg' where
 getKillUse :: Quad -> ([Atom], [Atom])
 getKillUse (QAss a1 a2) = ([a1], [a2])
 
-getKillUse (QJCond cond _) = ([], getUse cond)
+getKillUse (QJCond cond _ _) = ([], getUse cond)
 
 getKillUse (QRet a) = ([], [a])
 
@@ -91,6 +91,8 @@ getKillUse (QOp a1 a2 _ a3) = ([a1], [a2, a3])
 getKillUse (QCall a1 _ as) = ([a1], as)
 
 getKillUse (QVCall _ as) = ([], as)
+
+getKillUse (QPhi a rs) = ([a], fst $ unzip rs)
 
 getKillUse _ = ([], [])
 
@@ -118,8 +120,8 @@ getBlock lab = do
 getPreds :: MonadReader (LabelMap, Conns) m => Label -> m [Label]
 getPreds lab = do
   allPreds <- asks $ preds . snd
-  let predsMap = M.findWithDefault M.empty lab allPreds
-  return $ M.keys predsMap
+  let predsSet = M.findWithDefault S.empty lab allPreds
+  return $ S.toList predsSet
 
 
 getLiveDesc :: Label -> LiveMonad LiveDesc

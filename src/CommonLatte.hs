@@ -19,7 +19,7 @@ minInt = -(2 ^ 31)
 
 
 dividorShadow :: Char
-dividorShadow = '_'
+dividorShadow = '$'
 
 
 dividorSSA :: Char

@@ -4,6 +4,7 @@ module QuadCode where
 
 import Text.Read (readMaybe)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Control.Monad.State
 
 import AbsLatte
@@ -19,7 +20,7 @@ type QuadFun = (TopDef (), [QuadBlock])
 
 {- Graph connections -}
 
-type Edges = M.Map Label (M.Map Label Bool)
+type Edges = M.Map Label (S.Set Label)
 
 data Conns = Conns {preds :: Edges, succs :: Edges}
   deriving (Eq, Show)
@@ -91,7 +92,7 @@ instance Show Op where
 data Quad =
     QAss Atom Atom
   | QJmp Label
-  | QJCond Cond Label
+  | QJCond Cond Label Label
   | QVRet
   | QRet Atom
   | QNOp
@@ -105,7 +106,8 @@ data Quad =
 instance Show Quad where
   show (QAss a1 a2) = show a1 ++ " := " ++ show a2
   show (QJmp l) = "goto " ++ show l
-  show (QJCond c l) = "if (" ++ show c ++ ") goto " ++ show l
+  show (QJCond c l1 l2) =
+    "if (" ++ show c ++ ") goto " ++ show l1 ++ " else " ++ show l2
   show (QVRet) = "return"
   show (QRet a) = "return " ++ show a
   show (QNOp) = "nop"
@@ -145,7 +147,7 @@ stripLab (NoL q) = q
 
 isJump :: Quad -> Bool
 isJump (QJmp _) = True
-isJump (QJCond _ _) = True
+isJump (QJCond _ _ _) = True
 isJump _ = False
 
 
@@ -153,13 +155,14 @@ isLJump :: LQuad -> Bool
 isLJump lq = isJump $ stripLab lq
 
 
-getTarget :: Quad -> Label
-getTarget (QJmp l) = l
-getTarget (QJCond _ l) = l
+getTargets :: Quad -> [Label]
+getTargets (QJmp l) = [l]
+getTargets (QJCond _ l1 l2) = [l1, l2]
+getTargets _ = []
 
 
-getLTarget :: LQuad -> Label
-getLTarget lq = getTarget $ stripLab lq
+getLTargets :: LQuad -> [Label]
+getLTargets lq = getTargets $ stripLab lq
 
 
 getLab :: MonadState Context m => m Label
@@ -180,4 +183,22 @@ getVar :: MonadState Context m => m Atom
 getVar = do
   n <- getVarNum
   return $ Var $ "t" ++ show n
+
+
+printQuadFun :: QuadFun -> IO ()
+printQuadFun (FnDef _ _ (Ident id) _ _, blocks) = do
+  putStrLn $ "Function " ++ id ++ ":\n"
+  sequence_ $ printQuadBlock <$> blocks
+  putStrLn ""
+
+
+printQuadBlock :: QuadBlock -> IO ()
+printQuadBlock (lab, quads) = do
+  putStrLn $ show lab ++ ":"
+  sequence_ $ putStrLn . show <$> quads
+  putStrLn ""
+
+
+printQCode :: [QuadFun] -> IO ()
+printQCode = sequence_ . (printQuadFun <$>)
 

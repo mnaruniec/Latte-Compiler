@@ -120,9 +120,9 @@ makeSSAQuad (QVCall lab as) = do
   as' <- sequence $ getLastVar <$> as
   return $ QVCall lab as'
 
-makeSSAQuad (QJCond cond lab) = do
+makeSSAQuad (QJCond cond l1 l2) = do
   cond' <- makeSSACond cond
-  return $ QJCond cond' lab
+  return $ QJCond cond' l1 l2
 
 makeSSAQuad q = return q
 

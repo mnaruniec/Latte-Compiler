@@ -27,9 +27,8 @@ getTargetLabels (FnDef _ _ (Ident id) _ _) lQuads = foldr f start lQuads
   where
     start = S.singleton $ LFun id
 
-    f lQuad acc = if isLJump lQuad
-      then S.insert (getLTarget lQuad) acc
-      else acc
+    f lQuad acc =
+      foldr S.insert acc (getLTargets lQuad)
 
 
 isTarget :: Label -> BlocksMonad Bool
@@ -78,8 +77,4 @@ lQuadToBlocks (Just lab) curr [] = do
   tell $ D.singleton (lab, D.toList curr)
 
 lQuadToBlocks Nothing _ [] = return ()
-
-
-
-
 

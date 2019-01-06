@@ -52,57 +52,35 @@ quadBlock mLab (Block () (stmt:t)) = do
 
 quadBlock _ (Block () []) = return ()
 
-
-quadCondJump :: Maybe Label -> Label -> Label -> Label -> Cond -> QuadMonad ()
-quadCondJump mLab lThen lElse lNext comp@(Comp a1 rel a2)
-  | lThen == lNext = do
-      emitMLab mLab $ QJCond (Comp a1 (neg rel) a2) lElse
-  | lElse == lNext = do
-      emitMLab mLab $ QJCond comp lThen
-  | otherwise = do
-      emitMLab mLab $ QJCond comp lThen
-      l <- getLab
-      emitLab l $ QJmp lElse
-
-quadCondJump mLab lThen lElse lNext cond@(ValTrue a)
-  | lThen == lNext = do
-      emitMLab mLab $ QJCond (ValFalse $ a) lElse
-  | lElse == lNext = do
-      emitMLab mLab $ QJCond cond lThen
-  | otherwise = do
-      emitMLab mLab $ QJCond cond lThen
-      l <- getLab
-      emitLab l $ QJmp lElse
-
-quadCond :: Maybe Label -> Label -> Label -> Label -> Expr () -> QuadMonad ()
-quadCond mLab lThen lElse lNext (Not () cond) =
-  quadCond mLab lElse lThen lNext cond
+quadCond :: Maybe Label -> Label -> Label -> Expr () -> QuadMonad ()
+quadCond mLab lThen lElse (Not () cond) =
+  quadCond mLab lElse lThen cond
 
 
-quadCond mLab lThen _ lNext (ELitTrue ()) =
-  emitMLab mLab $ if (lThen == lNext) then QNOp else QJmp lThen
+quadCond mLab lThen _ (ELitTrue ()) =
+  emitMLab mLab $ QJmp lThen
 
-quadCond mLab lThen lElse lNext (ELitFalse ()) =
-  quadCond mLab lThen lElse lNext (Not () $ ELitTrue ())
+quadCond mLab lThen lElse (ELitFalse ()) =
+  quadCond mLab lThen lElse (Not () $ ELitTrue ())
 
-quadCond mLab lThen lElse lNext (ERel () e1 rel e2) = do
+quadCond mLab lThen lElse (ERel () e1 rel e2) = do
   (mLab', a1) <- quadExpr mLab e1
   (mLab'', a2) <- quadExpr mLab' e2
-  quadCondJump mLab'' lThen lElse lNext $ Comp a1 rel a2
+  emitMLab mLab'' $ QJCond (Comp a1 rel a2) lThen lElse
 
-quadCond mLab lThen lElse lNext (EAnd () c1 c2) = do
+quadCond mLab lThen lElse (EAnd () c1 c2) = do
   lMid <- getLab
-  quadCond mLab lMid lElse lMid c1
-  quadCond (Just lMid) lThen lElse lNext c2
+  quadCond mLab lMid lElse c1
+  quadCond (Just lMid) lThen lElse c2
 
-quadCond mLab lThen lElse lNext (EOr () c1 c2) = do
+quadCond mLab lThen lElse (EOr () c1 c2) = do
   lMid <- getLab
-  quadCond mLab lThen lMid lMid c1
-  quadCond (Just lMid) lThen lElse lNext c2
+  quadCond mLab lThen lMid c1
+  quadCond (Just lMid) lThen lElse c2
 
-quadCond mLab lThen lElse lNext expr = do
+quadCond mLab lThen lElse expr = do
   (mLab', a1) <- quadExpr mLab expr
-  quadCondJump mLab' lThen lElse lNext $ ValTrue a1
+  emitMLab mLab' $ QJCond (ValTrue a1) lThen lElse
 
 
 quadStmt :: Maybe Label -> Stmt () -> QuadMonad ()
@@ -126,7 +104,8 @@ quadStmt mLab (While () cond stmt) = do
   afterLab <- getLab
   emitMLab mLab $ QJmp condLab
   quadStmt (Just stmtLab) stmt
-  quadCond (Just condLab) stmtLab afterLab afterLab cond
+  emit $ NoL $ QJmp condLab
+  quadCond (Just condLab) stmtLab afterLab cond
   emitLab afterLab QNOp
 
 quadStmt mLab (Empty ()) =
@@ -153,17 +132,19 @@ quadStmt mLab (CondElse () cond s1 s2) = do
   trueLab <- getLab
   falseLab <- getLab
   afterLab <- getLab
-  quadCond mLab trueLab falseLab trueLab cond
+  quadCond mLab trueLab falseLab cond
   quadStmt (Just trueLab) s1
   emit $ NoL $ QJmp afterLab
   quadStmt (Just falseLab) s2
+  emit $ NoL $ QJmp afterLab
   emitLab afterLab QNOp
 
 quadStmt mLab (Cond () cond stmt) = do
   trueLab <- getLab
   falseLab <- getLab
-  quadCond mLab trueLab falseLab trueLab cond
+  quadCond mLab trueLab falseLab cond
   quadStmt (Just trueLab) stmt
+  emit $ NoL $ QJmp falseLab
   emitLab falseLab QNOp
 
 quadStmt mLab (SExp () expr) = do
@@ -243,9 +224,11 @@ quadExpr mLab cond = do
   lFalse <- getLab
   lAfter <- getLab
   v <- getVar
-  quadCond mLab lTrue lFalse lTrue cond
+  quadCond mLab lTrue lFalse cond
   emitLab lTrue $ QAss v $ CTrue
+  emit $ NoL $ QJmp lAfter
   emitLab lFalse $ QAss v $ CFalse
+  emit $ NoL $ QJmp lAfter
   emitLab lAfter QNOp
   return (Nothing, v)
 

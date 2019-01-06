@@ -37,11 +37,11 @@ fromGraph (funs, conns) = (funs', conns) where
 
 fromGraphFun :: FunGraph -> QuadFun
 fromGraphFun (topDef, labels, labelMap) = (topDef, blocks) where
-  blocks = zip labels $ foldr pushBlock [] labels
+  blocks = foldr pushBlock [] labels
 
   pushBlock lab t = case M.lookup lab labelMap of
     Nothing -> t
-    Just block -> block:t
+    Just block -> (lab, block):t
 
 
 

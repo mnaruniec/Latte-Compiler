@@ -2,10 +2,8 @@
 
 module Connections where
 
-import qualified Data.DList as D
 import qualified Data.Map as M
 import qualified Data.Set as S
-import qualified Data.List as L
 import Control.Monad.State
 
 import AbsLatte
@@ -20,39 +18,31 @@ findConns funs = execState (sequence_ $ findConnsFun <$> funs) noConns where
 
 
 findConnsFun :: QuadFun -> State Conns ()
-findConnsFun (_, labs) = foldM_ findConnsLab Nothing labs
+findConnsFun (_, labs) = sequence_ $ findConnsLab <$> labs
 
 
-findConnsLab :: Maybe Label -> QuadBlock -> State Conns (Maybe Label)
-findConnsLab (Just prev) qb@(curr, block) = do
-  addConnM True prev curr
-  findConnsLab Nothing qb
+findConnsLab :: QuadBlock -> State Conns ()
 
-findConnsLab Nothing (curr, []) = return $ Just curr
+findConnsLab (curr, []) = return ()
 
-findConnsLab Nothing (curr, l) = do
-  let lastComm = L.last l
-  when (isJump lastComm) $ addConnM False curr $ getTarget lastComm
-  return $ case lastComm of
-    QVRet -> Nothing
-    QRet _ -> Nothing
-    QJmp _ -> Nothing
-    otherwise -> Just curr
+findConnsLab (curr, l) = do
+  let lastComm = last l
+  sequence_ $ addConnM curr <$> getTargets lastComm
 
 
-addConn :: Bool -> Label -> Label -> Conns -> Conns
-addConn fallthrough from to (Conns preds succs) = Conns preds' succs' where
-  fromNeighbours = M.findWithDefault M.empty from succs
-  toNeighbours = M.findWithDefault M.empty to preds
+addConn :: Label -> Label -> Conns -> Conns
+addConn from to (Conns preds succs) = Conns preds' succs' where
+  fromNeighbours = M.findWithDefault S.empty from succs
+  toNeighbours = M.findWithDefault S.empty to preds
 
-  fromNeighbours' = M.insert to fallthrough fromNeighbours
-  toNeighbours' = M.insert from fallthrough toNeighbours
+  fromNeighbours' = S.insert to fromNeighbours
+  toNeighbours' = S.insert from toNeighbours
 
   succs' = M.insert from fromNeighbours' succs
   preds' = M.insert to toNeighbours' preds
 
 
-addConnM :: MonadState Conns m => Bool -> Label -> Label -> m ()
-addConnM fallthrough from to =
-  modify $ addConn fallthrough from to
+addConnM :: MonadState Conns m => Label -> Label -> m ()
+addConnM from to =
+  modify $ addConn from to
 
