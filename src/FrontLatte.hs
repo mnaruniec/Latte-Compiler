@@ -18,6 +18,7 @@ import NodeLatte
 import ToGraphLatte
 import LiveLatte
 import SSALatte
+import FoldLatte
 
 
 printList :: Show a => [a] -> IO ()
@@ -84,6 +85,12 @@ frontEnd p = do
 
       putStrLn "\n\n"
       printQCode $ fst $ fromGraph ssaGraph
+
+      let optGraph = foldVars ssaGraph
+
+      printQCode $ fst $ fromGraph optGraph
+
+
 
 
 
