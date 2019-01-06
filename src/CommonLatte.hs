@@ -1,12 +1,27 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module CommonLatte where
 
 
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import Control.Monad.Reader
 
 import AbsLatte
 
+
 type Location = Maybe (Int, Int)
+
+
+maxInt :: Integer
+maxInt = 2 ^ 31 - 1
+minInt :: Integer
+minInt = -(2 ^ 31)
+
+
+returnE :: MonadReader env m => a -> m (env, a)
+returnE x = do
+  env <- ask
+  return (env, x)
 
 
 (!?) :: Ord k => M.Map k a -> k -> Maybe a

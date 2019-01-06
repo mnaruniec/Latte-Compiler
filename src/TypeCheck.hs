@@ -1,17 +1,17 @@
-module TypeLatte where
+module TypeCheck where
 
 import AbsLatte
-import Data.DList
-import qualified Data.Map as M
+import qualified Data.DList as D
+import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import qualified Data.List as L
+import Data.List
 import Control.Monad.Reader
 import Control.Monad.Writer
 
 import CommonLatte
 
 
-type ErrorList = DList String
+type ErrorList = D.DList String
 
 type PEnv = M.Map Ident (Type ())
 type VEnv = M.Map Ident (Type (), Bool)
@@ -19,20 +19,9 @@ data Env = Env {pEnv :: PEnv, vEnv :: VEnv, curr :: (Ident, Type ())}
 
 type TypeMonad a = ReaderT Env (Writer ErrorList) a
 
-maxInt :: Integer
-maxInt = 2 ^ 31 - 1
-minInt :: Integer
-minInt = -(2 ^ 31)
 
-
-returnE :: a -> TypeMonad (Env, a)
-returnE x = do
-  env <- ask
-  return (env, x)
-
-
-tellL :: [a] -> Writer (DList [a]) ()
-tellL = tell . singleton
+tellL :: [a] -> Writer (D.DList [a]) ()
+tellL = tell . D.singleton
 
 tellLoc :: Location -> String -> Writer ErrorList ()
 tellLoc Nothing l = tellL l
@@ -49,8 +38,13 @@ checkDuplicates key printer l = sequence_ $ foldl f (S.empty, return ()) l where
     set' = S.insert key' set
 
 
-checkTypes :: Program Location -> Writer ErrorList ()
-checkTypes (Program _ topDefs) = do
+checkTypes :: Program Location -> [String]
+checkTypes p = D.toList errList where
+  (_, errList) = runWriter $ checkProgram p
+
+
+checkProgram :: Program Location -> Writer ErrorList ()
+checkProgram (Program _ topDefs) = do
   sequence_ $ checkSignature <$> topDefs
 
   let topDefs' = builtInDefs ++ topDefs
@@ -213,7 +207,7 @@ assWithMsg handler (Ass loc (Ident id) expr) = do
 assertAny :: [Type ()] -> Expr Location -> TypeMonad (Type ())
 assertAny ts expr = do
   t <- checkExpr expr
-  when (not $ L.elem t ts) $ lift $ tellLoc (getLoc expr) $
+  when (not $ elem t ts) $ lift $ tellLoc (getLoc expr) $
     "Expected expression of one of types: " ++ show ts ++ ", but received expression of type " ++ show t ++ "!"
   return t
 
@@ -263,7 +257,7 @@ checkExpr (EVar loc (Ident id)) = do
     Just (t, _) -> return t
 
 checkExpr (EApp loc (Ident id) args) = do
-  let lArgs = L.length args
+  let lArgs = length args
   argTypes <- sequence $ checkExpr <$> args
   pEnv <- asks pEnv
   case pEnv !? Ident id of
@@ -273,11 +267,11 @@ checkExpr (EApp loc (Ident id) args) = do
           ++ "Assuming return value int for further checking."
       return $ Int ()
     Just (Fun () t params) -> do
-      let lParams = L.length params
+      let lParams = length params
       when (lParams /= lArgs) $ lift $ tellLoc loc $
         "Function " ++ id ++ " takes " ++ show lParams ++
           " arguments, but is called with " ++ show lArgs ++ "!"
-      sequence_ $ checkArg <$> (L.zip4 [1..] args argTypes params)
+      sequence_ $ checkArg <$> (zip4 [1..] args argTypes params)
       return t
   where
     checkArg (idx, expr, argType, paramType) =

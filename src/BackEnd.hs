@@ -1,15 +1,12 @@
-module FrontLatte where
+module BackEnd where
 
 import AbsLatte
 import Data.DList
-import qualified Data.Map as M
+import qualified Data.Map.M as M
 import Control.Monad.Reader
 import Control.Monad.Writer
 
 import CommonLatte
-import TypeLatte
-import PrintLatte
-import VarsLatte
 import QuadLatte
 import GraphLatte
 import NopLatte
@@ -21,9 +18,7 @@ import SSALatte
 import FoldLatte
 
 
-printList :: Show a => [a] -> IO ()
-printList l = do
-  sequence_ $ putStrLn . show <$> l
+
 
 printBlockFun :: BlockFun -> IO ()
 printBlockFun (FnDef _ _ (Ident id) _ _, blocks) = do
