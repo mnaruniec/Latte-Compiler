@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module FoldLatte where
+module AtomFold where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -9,131 +9,110 @@ import Control.Monad.Reader
 
 import AbsLatte
 import CommonLatte
-import QuadLatte
-import GraphLatte
-import EdgeLatte
-import ToGraphLatte
-import LiveLatte (LiveSet, LiveDesc(..), LiveMap, LiveMonad)
+import QuadCode
+import Connections
+import GraphForm
 
---type QBlock = (Label, [Quad])
 
---type BlockFun = (TopDef (), [QBlock])
-
---type Edges = M.Map Label (M.Map Label Bool)
-
---data Conns = Conns {preds :: Edges, succs :: Edges}
---  deriving (Eq, Show)
-
---type LabelMap = M.Map Label [Quad]
-
---type FunGraph = (TopDef (), [Label], LabelMap)
-
---type Graph = ([FunGraph], Conns)
-
---type LiveSet = S.Set Atom
-
---data LiveDesc = LiveDesc {end :: LiveSet, steps :: [LiveSet]}
-  --deriving (Eq, Show)
-
---type LiveMap = M.Map Label LiveDesc
-
---type LiveMonad a = ReaderT (LabelMap, Conns) (State LiveMap) a
---
 
 type Subs = M.Map Atom Atom
 
 type FoldMonad a = State Subs a
 
 
-foldVars :: Graph ->  Graph
--- invalidates connections
-foldVars (funs, conns) =
-  (evalState stateMonad M.empty, conns)
+foldAtoms :: Graph -> (Graph, Bool)
+foldAtoms (funs, conns) = ((funs', conns'), changed)
   where
+    (funs', changed) = evalState stateMonad M.empty
+    linear = fst $ fromGraph (funs', conns)
+    conns' = if changed then findConns linear else conns
+
     stateMonad = collectSubs >> applySubs
-
     collectSubs = sequence_ $ collectSubsFun <$> funs
-    applySubs = sequence $ applySubsFun <$> funs
+    applySubs = do
+      result <- sequence $ applySubsFun <$> funs
+      let (funs', changedList) = unzip result
+      return (funs', any id changedList)
 
 
-applySubsFun :: FunGraph -> FoldMonad FunGraph
+applySubsFun :: FunGraph -> FoldMonad (FunGraph, Bool)
 applySubsFun (topDef, labs, labMap) = do
-  blockList <- sequence $ applySubsBlock <$> (M.toList labMap)
-  return (topDef, labs, M.fromList blockList)
+  result <- sequence $ applySubsBlock <$> (M.toList labMap)
+  let (blockList, changedList) = unzip result
+  return ((topDef, labs, M.fromList blockList), any id changedList)
 
 
-
-applySubsBlock :: QBlock -> FoldMonad QBlock
-applySubsBlock (lab, []) = return (lab, [])
+applySubsBlock :: QuadBlock -> FoldMonad (QuadBlock, Bool)
+applySubsBlock (lab, []) = return ((lab, []), False)
 
 applySubsBlock (lab, h:t) = do
-  (_, t') <- applySubsBlock (lab, t)
-  mh' <- applySubsQuad h
+  ((_, t'), chan1) <- applySubsBlock (lab, t)
+  (mh', chan2) <- applySubsQuad h
   case mh' of
-    Nothing -> return (lab, t')
-    Just h' -> return (lab, h':t')
+    Nothing -> return ((lab, t'), True)
+    Just h' -> return ((lab, h':t'), chan1 || chan2)
 
 
-applySubsQuad :: Quad -> FoldMonad (Maybe Quad)
+applySubsQuad :: Quad -> FoldMonad (Maybe Quad, Bool)
 applySubsQuad (QAss a1 a2) = do
   has <- hasSub a1
   if has
-    then return Nothing
+    then return (Nothing, True)
     else do
       a2' <- getLastSub a2
-      return $ Just $ QAss a1 a2'
+      return (Just $ QAss a1 a2', a2 /= a2')
 
 applySubsQuad (QRet a) = do
   a' <- getLastSub a
-  return $ Just $ QRet a'
+  return (Just $ QRet a', a /= a')
 
 applySubsQuad (QNeg a1 a2) = do
   has <- hasSub a1
   if has
-    then return Nothing
+    then return (Nothing, True)
     else do
       a2' <- getLastSub a2
-      return $ Just $ QNeg a1 a2'
+      return (Just $ QNeg a1 a2', a2 /= a2')
 
 applySubsQuad (QOp a1 a2 op a3) = do
   has <- hasSub a1
   if has
-    then return Nothing
+    then return (Nothing, True)
     else do
       a2' <- getLastSub a2
       a3' <- getLastSub a3
-      return $ Just $ QOp a1 a2' op a3'
+      return (Just $ QOp a1 a2' op a3', a2 /= a2' || a3 /= a3')
 
 applySubsQuad (QCall a lab as) = do
   as' <- sequence $ getLastSub <$> as
-  return $ Just $ QCall a lab as'
+  return (Just $ QCall a lab as', as /= as')
 
 applySubsQuad (QVCall lab as) = do
   as' <- sequence $ getLastSub <$> as
-  return $ Just $ QVCall lab as'
+  return (Just $ QVCall lab as', as /= as')
 
 applySubsQuad (QPhi a rs) = do
   has <- hasSub a
   if has
-    then return Nothing
+    then return (Nothing, True)
     else do
       rs' <- sequence $ (\(a, lab) -> do
           a' <- getLastSub a
           return (a', lab)) <$> rs
-      return $ Just $ QPhi a rs'
+      return (Just $ QPhi a rs', rs /= rs')
 
 applySubsQuad (QJCond cond lab) = do
   cond' <- applySubsCond cond
   if cond' == true
     then
-      return $ Just $ QJmp lab
+      return (Just $ QJmp lab, True)
     else if cond' == false
       then
-        return Nothing
+        return (Nothing, True)
       else
-        return $ Just $ QJCond cond' lab
+        return (Just $ QJCond cond' lab, cond /= cond')
 
-applySubsQuad q = return $ Just q
+applySubsQuad q = return (Just q, False)
 
 
 applySubsCond :: Cond -> FoldMonad Cond
@@ -166,9 +145,6 @@ applySubsCond cond'@(Comp a1 rel a2) = do
         c@(Comp (CFalse) _ (Var _)) -> varBool c
   return cond''
 
-
-
-
 applySubsCond (ValTrue a) = do
   a' <- getLastSub a
   return $ ValTrue a'
@@ -189,11 +165,10 @@ varBool (Comp CFalse (EQU ()) v) = ValFalse v
 varBool (Comp CFalse (NE ()) v) = ValTrue v
 
 
-
-
 boolCond :: Bool -> Cond
 boolCond True = true
 boolCond False = false
+
 
 getComp :: Ord b => RelOp a -> (b -> b -> Bool)
 getComp (EQU _) = (==)
@@ -202,6 +177,7 @@ getComp (LTH _) = (<)
 getComp (LE _) = (<=)
 getComp (GTH _) = (>)
 getComp (GE _) = (>=)
+
 
 true :: Cond
 true = ValTrue CTrue

@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module LiveLatte where
+module LiveVars where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -9,25 +9,9 @@ import Control.Monad.Reader
 
 import AbsLatte
 import CommonLatte
-import QuadLatte
-import GraphLatte
-import EdgeLatte
-import ToGraphLatte
+import QuadCode
+import GraphForm
 
---type QBlock = (Label, [Quad])
-
---type BlockFun = (TopDef (), [QBlock])
-
---type Edges = M.Map Label (M.Map Label Bool)
-
---data Conns = Conns {preds :: Edges, succs :: Edges}
---  deriving (Eq, Show)
-
---type LabelMap = M.Map Label [Quad]
-
---type FunGraph = (TopDef (), [Label], LabelMap)
-
---type Graph = ([FunGraph], Conns)
 
 type LiveSet = S.Set Atom
 
@@ -39,44 +23,8 @@ type LiveMap = M.Map Label LiveDesc
 type LiveMonad a = ReaderT (LabelMap, Conns) (State LiveMap) a
 
 
-getBlock :: Label -> LiveMonad [Quad]
-getBlock lab = do
-  (labelMap, _) <- ask
-  return $ (M.!) labelMap lab
-
-
-getPreds :: Label -> LiveMonad [Label]
-getPreds lab = do
-  allPreds <- asks $ preds . snd
-  let predsMap = M.findWithDefault M.empty lab allPreds
-  return $ M.keys predsMap
-
-
-getLiveDesc :: Label -> LiveMonad LiveDesc
-getLiveDesc lab = do
-  liveMap <- get
-  case M.lookup lab liveMap of
-    Nothing -> return $ LiveDesc {end = S.empty, steps = [S.empty]}
-    Just liveDesc -> return liveDesc
-
-getLiveSteps :: Label -> LiveMonad [LiveSet]
-getLiveSteps lab = do
-  LiveDesc _ steps <- getLiveDesc lab
-  return steps
-
-getLiveEnd :: Label -> LiveMonad LiveSet
-getLiveEnd lab = do
-  LiveDesc end _ <- getLiveDesc lab
-  return end
-
-getLiveBeg :: Label -> LiveMonad LiveSet
-getLiveBeg lab = do
-  steps <- getLiveSteps lab
-  return $ head steps
-
-
-getLive :: Graph -> LiveMap
-getLive (funs, conns) =
+getLiveVars :: Graph -> LiveMap
+getLiveVars (funs, conns) =
   execState (stateMonad) M.empty
   where
     stateMonad = sequence_ $ readerMonad <$> funs
@@ -155,11 +103,49 @@ getUse (ValTrue a) = [a]
 getUse (ValFalse a) = [a]
 
 
-
 isVar :: Atom -> Bool
 isVar (Var _) = True
+
 isVar _ = False
 
+
+getBlock :: MonadReader (LabelMap, Conns) m => Label -> m [Quad]
+getBlock lab = do
+  (labelMap, _) <- ask
+  return $ (M.!) labelMap lab
+
+
+getPreds :: MonadReader (LabelMap, Conns) m => Label -> m [Label]
+getPreds lab = do
+  allPreds <- asks $ preds . snd
+  let predsMap = M.findWithDefault M.empty lab allPreds
+  return $ M.keys predsMap
+
+
+getLiveDesc :: Label -> LiveMonad LiveDesc
+getLiveDesc lab = do
+  liveMap <- get
+  case M.lookup lab liveMap of
+    Nothing -> return $ LiveDesc {end = S.empty, steps = [S.empty]}
+    Just liveDesc -> return liveDesc
+
+
+getLiveSteps :: Label -> LiveMonad [LiveSet]
+getLiveSteps lab = do
+  LiveDesc _ steps <- getLiveDesc lab
+  return steps
+
+
+getLiveEnd :: Label -> LiveMonad LiveSet
+getLiveEnd lab = do
+  LiveDesc end _ <- getLiveDesc lab
+  return end
+
+
+getLiveBeg :: Label -> LiveMonad LiveSet
+getLiveBeg lab = do
+  steps <- getLiveSteps lab
+  return $ head steps
 
 
 

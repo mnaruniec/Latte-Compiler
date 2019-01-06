@@ -18,6 +18,14 @@ minInt :: Integer
 minInt = -(2 ^ 31)
 
 
+dividorShadow :: Char
+dividorShadow = '_'
+
+
+dividorSSA :: Char
+dividorSSA = '_'
+
+
 returnE :: MonadReader env m => a -> m (env, a)
 returnE x = do
   env <- ask
@@ -62,4 +70,8 @@ builtInDefs = [prIDef, prStrDef, errDef, reIDef, reStrDef] where
   reStrDef = FnDef loc (Str loc) (Ident "readString")
     [] (Block loc [Empty loc])
 
+
+printList :: Show a => [a] -> IO ()
+printList l = do
+  sequence_ $ putStrLn . show <$> l
 

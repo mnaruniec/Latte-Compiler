@@ -1,6 +1,6 @@
 all:
-	happy -gca ParLatte.y
-	alex -g LexLatte.x
+#	happy -gca ParLatte.y
+#	alex -g LexLatte.x
 	ghc --make Main.hs -o Main
 
 clean:

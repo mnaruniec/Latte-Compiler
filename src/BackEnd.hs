@@ -1,52 +1,43 @@
 module BackEnd where
 
 import AbsLatte
-import Data.DList
-import qualified Data.Map.M as M
-import Control.Monad.Reader
-import Control.Monad.Writer
 
 import CommonLatte
-import QuadLatte
-import GraphLatte
-import NopLatte
-import EdgeLatte
-import NodeLatte
-import ToGraphLatte
-import LiveLatte
-import SSALatte
-import FoldLatte
+
+
+import QuadCode
+import QuadGenerate
+import QuadToBlocks
+import NopRemoval
+import Connections
+import DeadNodes
+import GraphForm
+import LiveVars
+import SSA
+import AtomFold
 
 
 
 
-printBlockFun :: BlockFun -> IO ()
-printBlockFun (FnDef _ _ (Ident id) _ _, blocks) = do
+printQuadFun :: QuadFun -> IO ()
+printQuadFun (FnDef _ _ (Ident id) _ _, blocks) = do
   putStrLn $ "Function " ++ id ++ ":\n"
-  sequence_ $ printQBlock <$> blocks
+  sequence_ $ printQuadBlock <$> blocks
   putStrLn ""
 
-printQBlock :: QBlock -> IO ()
-printQBlock (lab, quads) = do
+printQuadBlock :: QuadBlock -> IO ()
+printQuadBlock (lab, quads) = do
   putStrLn $ show lab ++ ":"
   sequence_ $ putStrLn . show <$> quads
   putStrLn ""
 
-printQCode :: [BlockFun] -> IO ()
-printQCode = sequence_ . (printBlockFun <$>)
+printQCode :: [QuadFun] -> IO ()
+printQCode = sequence_ . (printQuadFun <$>)
 
 
-frontEnd :: Program Location -> IO ()
-frontEnd p = do
-  let (_, typeCheck) = runWriter $ checkTypes p
-  let errors = toList typeCheck
-  if errors /= []
-    then do
-      putStrLn $ show errors
-    else do
-      let newTree = uniqueVars p
-      putStrLn $ printTree newTree
-      let (ctx, quadCode) = genQuad newTree
+backEnd :: Program () -> IO ()
+backEnd p = do
+      let (ctx, quadCode) = genQuad p
       sequence_ $ printList . snd <$> quadCode
       let blockFuns = quadToBlocks ctx quadCode
       putStrLn "\n\n"
@@ -54,35 +45,30 @@ frontEnd p = do
       let blockFuns' = removeNops blockFuns
       putStrLn "\n\nAfter nop elimination:\n"
       printQCode blockFuns'
-
-      let connections = findEdges blockFuns'
+      let connections = findConns blockFuns'
       putStrLn $ show connections
       putStrLn "\n\n"
-      let reachable = reachableLabels connections blockFuns'
-      putStrLn $ show reachable
+--      let reachable = reachableLabels blockFuns' connections
+--      putStrLn $ show reachable
 
-      let blockFuns'' = removeUnreachable connections blockFuns'
+      let (blockFuns'', connections') = removeDeadNodes blockFuns' connections
       putStrLn "\n\n"
       printQCode blockFuns''
-      let connections' = findEdges blockFuns''
-      putStrLn "\n"
       putStrLn $ show connections'
 
       let graph = toGraph blockFuns'' connections'
       putStrLn "\n\n"
       putStrLn $ show graph
 
-      let liveMap = getLive graph
+      let liveMap = getLiveVars graph
       putStrLn "\n\n"
       putStrLn $ show liveMap
 
       let ssaGraph = makeSSA graph liveMap
-
       putStrLn "\n\n"
       printQCode $ fst $ fromGraph ssaGraph
 
-      let optGraph = foldVars ssaGraph
-
+      let optGraph = fst $ foldAtoms ssaGraph
       printQCode $ fst $ fromGraph optGraph
 
 

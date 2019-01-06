@@ -18,9 +18,6 @@ type Next = M.Map Ident Int
 type VarsMonad a = ReaderT Env (State Next) a
 
 
-dividorShadow :: Char
-dividorShadow = '$'
-
 
 newId :: Ident -> Int -> Ident
 newId (Ident id) n = Ident $ id ++ [dividorShadow] ++ show n

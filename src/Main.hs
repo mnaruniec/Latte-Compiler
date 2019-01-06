@@ -14,9 +14,11 @@ import AbsLatte
 
 import CommonLatte
 import FrontEnd
-
+import BackEnd
 
 import ErrM
+
+
 
 type ParseFun a = [Token] -> Err a
 
@@ -39,11 +41,6 @@ printOk = do
   hPutStrLn stderr "OK\n"
 
 
-printList :: Show a => [a] -> IO ()
-printList l = do
-  sequence_ $ putStrLn . show <$> l
-
-
 run :: Verbosity -> ParseFun (Program Location) -> String -> IO ()
 run v p s = let ts = myLLexer s in case p ts of
            Bad s    -> do printError
@@ -57,6 +54,7 @@ run v p s = let ts = myLLexer s in case p ts of
                             printError
                             printList errors
                             exitFailure
+                          backEnd tree'
                           exitSuccess
 
 

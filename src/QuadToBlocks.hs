@@ -1,54 +1,26 @@
-module GraphLatte where
+module QuadToBlocks where
 
 import qualified Data.DList as D
-import qualified Data.Map as M
 import qualified Data.Set as S
-import qualified Data.List as L
 import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.Reader
 
 import AbsLatte
 import CommonLatte
-import QuadLatte
-
-type QBlock = (Label, [Quad])
-
-type BlockFun = (TopDef (), [QBlock])
-
-
-stripLab :: LQuad -> Quad
-stripLab (Lab _ q) = q
-stripLab (NoL q) = q
-
-isJump :: Quad -> Bool
-isJump (QJmp _) = True
-isJump (QJCond _ _) = True
-isJump _ = False
-
-isLJump :: LQuad -> Bool
-isLJump lq = isJump $ stripLab lq
-
-
-getTarget :: Quad -> Label
-getTarget (QJmp l) = l
-getTarget (QJCond _ l) = l
-
-
-getLTarget :: LQuad -> Label
-getLTarget lq = getTarget $ stripLab lq
-
-isTarget :: Label -> BlocksMonad Bool
-isTarget l = asks $ S.member l
+import QuadCode
 
 
 
-type BlocksMonad a = WriterT (D.DList QBlock) (ReaderT (S.Set Label) (State Context)) a
+type BlocksMonad a = WriterT (D.DList QuadBlock)
+  (ReaderT (S.Set Label) (State Context)) a
 
 
-quadToBlocks :: Context -> [(TopDef (), [LQuad])] -> [BlockFun]
+
+quadToBlocks :: Context -> [(TopDef (), [LQuad])] -> [QuadFun]
 quadToBlocks ctx quadCode =
   fst $ runState (sequence $ fnToBlocks <$> quadCode) ctx
+
 
 getTargetLabels :: TopDef () -> [LQuad] -> S.Set Label
 getTargetLabels (FnDef _ _ (Ident id) _ _) lQuads = foldr f start lQuads
@@ -60,7 +32,11 @@ getTargetLabels (FnDef _ _ (Ident id) _ _) lQuads = foldr f start lQuads
       else acc
 
 
-fnToBlocks :: (TopDef (), [LQuad]) -> State Context (BlockFun)
+isTarget :: Label -> BlocksMonad Bool
+isTarget l = asks $ S.member l
+
+
+fnToBlocks :: (TopDef (), [LQuad]) -> State Context (QuadFun)
 fnToBlocks (fnDef, quadCode) = do
   let targets = getTargetLabels fnDef quadCode
   ((), dl) <- runReaderT (runWriterT $ lQuadToBlocks Nothing D.empty quadCode) targets

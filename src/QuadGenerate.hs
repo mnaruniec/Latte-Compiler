@@ -1,111 +1,18 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module QuadLatte where
+module QuadGenerate where
 
-import Data.DList
-import qualified Data.Map as M
-import qualified Data.Set as S
-import qualified Data.List as L
+import qualified Data.DList as D
 import Control.Monad.State
 import Control.Monad.Writer
-import Text.Read (readMaybe)
 
 import AbsLatte
 import CommonLatte
-
-data Atom =
-    CInt Integer
-  | CString String
-  | CTrue
-  | CFalse
-  | Var String
-  | Undef
-  deriving (Eq, Ord)
-
-instance Show Atom where
-  show (CInt n) = show n
-  show (CString str) = show str
-  show (CTrue) = "true"
-  show (CFalse) = "false"
-  show (Var str) = str
-  show (Undef) = "UNDEF"
-
-data Cond =
-    Comp Atom (RelOp ()) Atom
-  | ValTrue Atom
-  | ValFalse Atom
-  deriving (Eq, Ord)
-
-instance Show Cond where
-  show (Comp a1 rel a2) = show a1 ++ " " ++ show rel ++ " " ++ show a2
-  show (ValTrue a) = show a
-  show (ValFalse a) = "!(" ++ show a ++ ")"
-
-data Label =
-    LNum Integer
-  | LFun String
-  deriving (Eq, Ord)
-
-instance Show Label where
-  show (LNum n) = "L" ++ show n
-  show (LFun str@(h:t)) =
-    let rm = readMaybe t :: Maybe Integer in
-      if h == 'L' && rm /= Nothing
-        then "func_" ++ str
-        else str
-
-data Op = QPlus | QMinus | QTimes | QDiv | QMod | QCon
-  deriving (Eq, Ord)
-
-instance Show Op where
-  show (QPlus) = "+"
-  show (QMinus) = "-"
-  show (QTimes) = "*"
-  show (QDiv) = "/"
-  show (QMod) = "%"
-  show (QCon) = "++"
-
-data Quad =
-    QAss Atom Atom
-  | QJmp Label
-  | QJCond Cond Label
-  | QVRet
-  | QRet Atom
-  | QNOp
-  | QNeg Atom Atom
-  | QOp Atom Atom Op Atom
-  | QCall Atom Label [Atom]
-  | QVCall Label [Atom]
-  | QPhi Atom [(Atom, Label)]
-  deriving (Eq, Ord)
-
-instance Show Quad where
-  show (QAss a1 a2) = show a1 ++ " := " ++ show a2
-  show (QJmp l) = "goto " ++ show l
-  show (QJCond c l) = "if (" ++ show c ++ ") goto " ++ show l
-  show (QVRet) = "return"
-  show (QRet a) = "return " ++ show a
-  show (QNOp) = "nop"
-  show (QNeg a1 a2) = show a1 ++ " := -(" ++ show a2 ++ ")"
-  show (QOp a1 a2 op a3) =
-    show a1 ++ " := " ++ show a2 ++ " " ++ show op ++ " " ++ show a3
-  show (QCall a l as) = show a ++ " := " ++ show l ++ "(" ++ show as ++ ")"
-  show (QVCall l as) = show l ++ "(" ++ show as ++ ")"
-  show (QPhi a rs) = show a ++ " := phi " ++ show rs
-
-data LQuad =
-    NoL Quad
-  | Lab Label Quad
-  deriving (Eq, Ord)
-
-instance Show LQuad where
-  show (NoL q) = show q
-  show (Lab l q) = show l ++ ": " ++ show q
+import QuadCode
 
 
-data Context = Context {nextVar :: Integer, nextLab :: Integer}
 
-type QuadMonad a = StateT Context (Writer (DList LQuad)) a
+type QuadMonad a = StateT Context (Writer (D.DList LQuad)) a
 
 
 defVal :: Type a -> Expr a
@@ -114,24 +21,8 @@ defVal (Str a) = EString a ""
 defVal (Bool a) = ELitFalse a
 
 
-neg :: RelOp a -> RelOp a
-neg (LTH a) = (GE a)
-neg (GE a) = (LTH a)
-neg (GTH a) = (LE a)
-neg (LE a) = (GTH a)
-neg (EQU a) = (NE a)
-neg (NE a) = (EQU a)
-
-
-maxInt :: Integer
-maxInt = 2 ^ 31 - 1
-minInt :: Integer
-minInt = -(2 ^ 31)
-
-
-
 emit :: LQuad -> QuadMonad ()
-emit = tell . singleton
+emit = tell . D.singleton
 
 emitLab :: Label -> Quad -> QuadMonad ()
 emitLab l q = emit $ Lab l q
@@ -142,35 +33,16 @@ emitMLab ml q =
     Nothing -> emit $ NoL q
     Just l -> emitLab l q
 
-getLab :: MonadState Context m => m Label
-getLab = do
-  Context nV nL <- get
-  put $ Context nV (nL + 1)
-  return $ LNum nL
-
-getVarNum :: MonadState Context m => m Integer
-getVarNum = do
-  Context nV nL <- get
-  put $ Context (nV + 1) nL
-  return nV
-
-getVar :: MonadState Context m => m Atom
-getVar = do
-  n <- getVarNum
-  return $ Var $ "t" ++ show n
-
-
 genQuad :: Program () -> (Context, [(TopDef (), [LQuad])])
 genQuad (Program _ topDefs) = (ctx, zip topDefs quadCodes) where
-  (ctx, quadCodes) = L.foldr quadFn (startContext, []) topDefs
+  (ctx, quadCodes) = foldr quadFn (startContext, []) topDefs
   quadFn (FnDef _ t (Ident id) _ block) (ctx, tail) =
-    (ctx', (toList $ dl'):tail)
+    (ctx', (D.toList $ dl'):tail)
     where
       (((), ctx'), dl) = runWriter (runStateT (quadBlock (Just $ LFun id) block) ctx)
-      dl' = if (t == Void ()) then dl `mappend` (fromList [NoL QVRet]) else dl
+      dl' = if (t == Void ()) then dl `mappend` (D.fromList [NoL QVRet]) else dl
 
   startContext = Context 0 0
-
 
 
 quadBlock :: Maybe Label -> Block () -> QuadMonad ()
@@ -201,10 +73,6 @@ quadCondJump mLab lThen lElse lNext cond@(ValTrue a)
       emitMLab mLab $ QJCond cond lThen
       l <- getLab
       emitLab l $ QJmp lElse
-
-
-
-
 
 quadCond :: Maybe Label -> Label -> Label -> Label -> Expr () -> QuadMonad ()
 quadCond mLab lThen lElse lNext (Not () cond) =
@@ -238,8 +106,6 @@ quadCond mLab lThen lElse lNext expr = do
 
 
 quadStmt :: Maybe Label -> Stmt () -> QuadMonad ()
-
-
 quadStmt mLab (Decl () t (item:tail)) = do
   let (id, expr) = case item of
         NoInit () id -> (id, defVal t)
@@ -262,7 +128,6 @@ quadStmt mLab (While () cond stmt) = do
   quadStmt (Just stmtLab) stmt
   quadCond (Just condLab) stmtLab afterLab afterLab cond
   emitLab afterLab QNOp
-
 
 quadStmt mLab (Empty ()) =
   emitMLab mLab QNOp
@@ -304,9 +169,6 @@ quadStmt mLab (Cond () cond stmt) = do
 quadStmt mLab (SExp () expr) = do
   (mLab', a) <- quadExpr mLab expr
   emitMLab mLab' QNOp
-
-
-
 
 
 quadExpr :: Maybe Label -> Expr () -> QuadMonad (Maybe Label, Atom)
@@ -363,7 +225,6 @@ quadExpr mLab (EApp () (Ident id) es) = do
 
     quadArg mLab [] = return (mLab, [])
 
-
 quadExpr mLab (ELitTrue ()) = return (mLab, CTrue)
 
 quadExpr mLab (ELitFalse ()) = return (mLab, CFalse)
@@ -387,5 +248,4 @@ quadExpr mLab cond = do
   emitLab lFalse $ QAss v $ CFalse
   emitLab lAfter QNOp
   return (Nothing, v)
-
 
