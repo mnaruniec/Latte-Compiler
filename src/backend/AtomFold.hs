@@ -145,6 +145,7 @@ applySubsCond cond'@(Comp a1 rel a2) = do
         c@(Comp (Var _) _ (CFalse)) -> varBool c
         c@(Comp (CTrue) _ (Var _)) -> varBool c
         c@(Comp (CFalse) _ (Var _)) -> varBool c
+        otherwise -> cond'
   return cond''
 
 applySubsCond (ValTrue a) = do

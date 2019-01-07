@@ -174,25 +174,7 @@ checkStmt (Decl l t (item:tail)) = do
 
   local (\_ -> env') $ checkStmt (Decl l t tail)
 
-checkStmt ass@(Ass _ _ expr) =
-  assWithMsg (\t -> assertType t expr) ass
-
-checkStmt ass@(Incr loc (Ident id)) =
-  assWithMsg handler ass where
-    handler t =
-      when (t /= Int ()) $ lift $ tellLoc loc $
-        "Cannot increment variable " ++ id ++ " of type " ++ show t ++ "!"
-
-checkStmt ass@(Decr loc (Ident id)) =
-  assWithMsg handler ass where
-    handler t =
-      when (t /= Int ()) $ lift $ tellLoc loc $
-        "Cannot decrement variable " ++ id ++ " of type " ++ show t ++ "!"
-
-
-
-assWithMsg :: (Type () -> TypeMonad ()) -> Stmt Location -> TypeMonad (Env, Bool)
-assWithMsg handler (Ass loc (Ident id) expr) = do
+checkStmt (Ass loc (Ident id) expr) = do
   vEnv <- asks vEnv
   case vEnv !? Ident id of
     Nothing -> do
@@ -200,7 +182,29 @@ assWithMsg handler (Ass loc (Ident id) expr) = do
       checkExpr expr
       return ()
     Just (t, _) -> do
-      handler t
+      assertType t expr
+  returnE False
+
+
+checkStmt (Incr loc (Ident id)) = do
+  vEnv <- asks vEnv
+  case vEnv !? Ident id of
+    Nothing -> do
+      lift $ tellLoc loc $ "Variable " ++ id ++ " not declared!"
+    Just (t, _) -> do
+       when (t /= Int ()) $ lift $ tellLoc loc $
+        "Cannot increment variable " ++ id ++ " of type " ++ show t ++ "!"
+  returnE False
+
+
+checkStmt (Decr loc (Ident id)) = do
+  vEnv <- asks vEnv
+  case vEnv !? Ident id of
+    Nothing -> do
+      lift $ tellLoc loc $ "Variable " ++ id ++ " not declared!"
+    Just (t, _) -> do
+       when (t /= Int ()) $ lift $ tellLoc loc $
+        "Cannot decrement variable " ++ id ++ " of type " ++ show t ++ "!"
   returnE False
 
 

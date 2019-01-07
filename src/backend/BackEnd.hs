@@ -20,7 +20,7 @@ import LLVM
 
 
 
-backEnd :: Program () -> IO ()
+backEnd :: Program () -> IO String
 backEnd p = do
       let (ctx, quadCode) = genQuad p
       sequence_ $ printList . snd <$> quadCode
@@ -61,4 +61,6 @@ backEnd p = do
       let llvmCode = getLLVM linear
 
       printStringList llvmCode
+
+      return $ unlines llvmCode
 

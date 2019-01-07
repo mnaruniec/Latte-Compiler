@@ -41,7 +41,10 @@ getLLVM funs = output where
   funs''' = concat funs''
 
   (funs'', St strings _ _ _) =
-    runState (runReaderT (sequence $ llvmFun <$> funs) startEnv) startState
+    runState (runReaderT (collectMonad >> buildMonad) startEnv) startState
+
+  collectMonad = sequence_ $ collectFun <$> funs
+  buildMonad = sequence $ llvmFun <$> funs
 
   startState =
     St {strings = M.empty, nextStr = 0, types = M.empty, nextLocal = 0}
@@ -206,7 +209,7 @@ constType (CInt _) = int
 constType (CString _) = str
 constType CTrue = bool
 constType CFalse = bool
---constType _ = int --DEBUG
+constType _ = int --DEBUG
 
 
 getType :: Atom -> LLVMMonad String
