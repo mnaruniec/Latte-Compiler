@@ -124,8 +124,10 @@ applySubsCond cond'@(Comp a1 rel a2) = do
   let cond' = Comp a1' rel a2'
   let cond'' = case cond' of
         --string comparison by address
-        Comp (CString s1) (EQU ()) (CString s2) -> false
-        Comp (CString s1) (NE ()) (CString s2) -> true
+        Comp (CString s) (EQU ()) _ -> false
+        Comp _ (EQU ()) (CString s) -> false
+        Comp (CString s) (NE ()) _ -> true
+        Comp _ (NE ()) (CString s) -> true
         Comp (CInt n1) _ (CInt n2) -> boolCond (op' n1 n2)
         Comp CTrue _ CTrue -> boolCond (op True True)
         Comp CTrue _ CFalse -> boolCond (op True False)

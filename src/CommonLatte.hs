@@ -19,11 +19,32 @@ minInt = -(2 ^ 31)
 
 
 dividorShadow :: Char
-dividorShadow = '$'
+dividorShadow = '_'
 
-
+-- shoud not be infix of others
 dividorSSA :: Char
-dividorSSA = '_'
+dividorSSA = '$'
+
+prefixGlobal :: String
+prefixGlobal = "@.str."
+
+prefixLocal :: String
+prefixLocal = "%"
+
+prefixLab :: String
+prefixLab = "L"
+
+prefixFun :: String
+prefixFun = "@"
+
+prefixPrivFun :: String
+prefixPrivFun = ".priv."
+
+prefixQuadTemp :: String
+prefixQuadTemp = ".q."
+
+prefixLLVMTemp :: String
+prefixLLVMTemp = ".l."
 
 
 returnE :: MonadReader env m => a -> m (env, a)
@@ -71,7 +92,23 @@ builtInDefs = [prIDef, prStrDef, errDef, reIDef, reStrDef] where
     [] (Block loc [Empty loc])
 
 
+privDefs :: [TopDef Location]
+privDefs = [privConcat, privCopy] where
+  loc = Just (-1, -1)
+  privConcat = FnDef loc (Str loc) (Ident $ prefixPrivFun ++ "concat")
+    [Arg loc (Str loc) (Ident "s1"), Arg loc (Str loc) (Ident "s2")]
+    (Block loc [Empty loc])
+  privCopy = FnDef loc (Str loc) (Ident $ prefixPrivFun ++ "copy")
+    [Arg loc (Str loc) (Ident "src")]
+    (Block loc [Empty loc])
+
+
 printList :: Show a => [a] -> IO ()
 printList l = do
   sequence_ $ putStrLn . show <$> l
+
+
+printStringList :: [String] -> IO ()
+printStringList l = do
+  putStrLn $ unlines l
 

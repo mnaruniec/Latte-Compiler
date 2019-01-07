@@ -49,7 +49,8 @@ run v p s = let ts = myLLexer s in case p ts of
                           putStrV v $ show ts
                           putStrLn s
                           exitFailure
-           Ok  tree -> do let (tree', errors) = frontEnd tree
+           Ok  tree -> do showTree v tree
+                          let (tree', errors) = frontEnd tree
                           when (errors /= []) $ do
                             printError
                             printList errors

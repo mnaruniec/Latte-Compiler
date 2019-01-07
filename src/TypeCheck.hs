@@ -304,7 +304,7 @@ checkExpr (EAdd loc e1 op e2)
       t1 <- assertAny [Int (), Str ()] e1
       t2 <- assertAny [Int (), Str ()] e2
       assertEqu loc t1 t2
-      return $ Int ()
+      return $ t1
   where
     op' = strip op
 

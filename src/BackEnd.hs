@@ -16,6 +16,7 @@ import LiveVars
 import SSA
 import AtomFold
 import Optimize
+import LLVM
 
 
 
@@ -56,6 +57,8 @@ backEnd p = do
       putStrLn "\n\n"
       printQCode $ fst $ fromGraph optGraph
 
+      let linear = fst $ fromGraph optGraph
+      let llvmCode = getLLVM linear
 
-
+      printStringList llvmCode
 

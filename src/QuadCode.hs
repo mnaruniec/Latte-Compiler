@@ -47,7 +47,7 @@ instance Show Atom where
   show (CString str) = show str
   show (CTrue) = "true"
   show (CFalse) = "false"
-  show (Var str) = str
+  show (Var str) = prefixLocal ++ str
   show (Undef) = "UNDEF"
 
 
@@ -69,12 +69,8 @@ data Label =
   deriving (Eq, Ord)
 
 instance Show Label where
-  show (LNum n) = "L" ++ show n
-  show (LFun str@(h:t)) =
-    let rm = readMaybe t :: Maybe Integer in
-      if h == 'L' && rm /= Nothing
-        then "func_" ++ str
-        else str
+  show (LNum n) = prefixLab ++ show n
+  show (LFun str) = prefixFun ++ str
 
 
 data Op = QPlus | QMinus | QTimes | QDiv | QMod | QCon
@@ -182,7 +178,7 @@ getVarNum = do
 getVar :: MonadState Context m => m Atom
 getVar = do
   n <- getVarNum
-  return $ Var $ "t" ++ show n
+  return $ Var $ prefixQuadTemp ++ show n
 
 
 printQuadFun :: QuadFun -> IO ()
