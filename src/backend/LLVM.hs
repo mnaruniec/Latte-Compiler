@@ -1,6 +1,7 @@
 module LLVM where
 
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Control.Monad.Reader hiding (void)
 import Control.Monad.State hiding (void)
 
@@ -22,8 +23,10 @@ instance Show Global where
 
 type StringMap = M.Map String Global
 
+type Inherits = M.Map Atom [Atom]
+
 data LLVMState = St {strings :: StringMap, nextStr :: Integer,
-  types :: TypeMap, nextLocal :: Integer}
+  types :: TypeMap, nextLocal :: Integer, inherits :: Inherits }
   deriving (Eq, Show)
 
 type LLVMMonad a = ReaderT FunMap (State LLVMState) a
@@ -40,14 +43,13 @@ getLLVM funs = output where
 
   funs''' = concat funs''
 
-  (funs'', St strings _ _ _) =
-    runState (runReaderT (collectMonad >> buildMonad) startEnv) startState
+  (funs'', St strings _ _ _ _) =
+    runState (runReaderT buildMonad startEnv) startState
 
-  collectMonad = sequence_ $ collectFun <$> funs
   buildMonad = sequence $ llvmFun <$> funs
 
   startState =
-    St {strings = M.empty, nextStr = 0, types = M.empty, nextLocal = 0}
+    St {strings = M.empty, nextStr = 0, types = M.empty, nextLocal = 0, inherits = M.empty}
 
   startEnv = M.fromList $ collectFunType <$> funs'
   collectFunType (FnDef _ t (Ident id) _ _) = (LFun id, strType t)
@@ -67,8 +69,98 @@ llvmFun :: QuadFun -> LLVMMonad LLVM
 llvmFun (topDef@(FnDef _ _ _ args _), qBlocks) = do
   let header = getFunHeader define topDef
   sequence_ $ putArgType <$> args
+  sequence_ $ collectTypesBlock <$> qBlocks
+  resolveTypes
   qBlocks' <- sequence $ llvmBlock <$> qBlocks
   return $ header ++ concat qBlocks' ++ ["}", ""]
+
+
+resolveTypes :: LLVMMonad ()
+resolveTypes = do
+  inh <- gets inherits
+  sequence_ $ resolveTypesTree S.empty <$> M.keys inh
+
+resolveTypesTree :: S.Set Atom -> Atom -> LLVMMonad (S.Set Atom, Maybe String)
+resolveTypesTree visited a = do
+  let visited' = S.insert a visited
+  if S.member a visited
+    then return (visited, Nothing)
+    else do
+      has <- hasType a
+      if has
+        then do
+          t <- getType a
+          return (visited', Just t)
+        else do
+
+          inhs <- gets $ (flip (M.!) a) . inherits
+          has <- sequence $ hasType <$> inhs
+          let trueList = filter snd $ zip inhs has
+          res@(visited'', Just t) <- if trueList == []
+            then
+              let
+                f (vis, Nothing) a' = resolveTypesTree vis a'
+                f acc _ = return acc
+              in do
+                foldM f (visited', Nothing) inhs
+            else do
+              let a' = fst $ head trueList
+              t <- getType a'
+              return (visited', Just t)
+          putType a t
+          sequence_ $ (flip putType) t <$> inhs
+          return res
+
+
+
+collectTypesBlock :: QuadBlock -> LLVMMonad ()
+collectTypesBlock (_, block) = do
+  sequence_ $ collectTypesQuad <$> block
+
+
+collectTypesQuad :: Quad -> LLVMMonad ()
+
+collectTypesQuad (QJCond (ValTrue v) _ _) =
+  putType v bool
+
+collectTypesQuad (QJCond (ValFalse v) _ _) =
+  putType v bool
+
+
+collectTypesQuad (QNeg a1 a2) = do
+  putType a1 int
+  putType a2 int
+
+
+collectTypesQuad (QOp a1 a2 QCon a3) = do
+  putType a1 str
+  putType a2 str
+  putType a3 str
+
+
+collectTypesQuad (QOp a1 a2 op a3) = do
+  putType a1 int
+  putType a2 int
+  putType a3 int
+
+
+collectTypesQuad (QAss a1 c@(CString _)) = do
+  putType a1 str
+
+
+collectTypesQuad (QCall a1 lab as) = do
+  t <- asks $ flip (M.!) lab
+  putType a1 t
+
+
+collectTypesQuad (QPhi a1 rs) = do
+  putInherits a1 $ fst $ unzip rs
+
+
+collectTypesQuad _ = return ()
+
+
+
 
 putArgType :: Arg () -> LLVMMonad ()
 putArgType (Arg _ t (Ident id)) = putType (Var id) $ strType t
@@ -125,7 +217,6 @@ llvmQuad (QOp a1 a2 op a3) = do
         QTimes -> "mul "
         QDiv -> "sdiv "
         QMod -> "srem "
-  putType a1 int
   return [show a1 ++ " = " ++ opS ++ int ++ " " ++ show a2 ++ ", " ++ show a3]
 
 
@@ -133,7 +224,7 @@ llvmQuad (QAss a1 c@(CString _)) = do
   llvmQuad $ QCall a1 privCopy [c]
 
 llvmQuad (QCall a1 lab as) = do
-  t <- asks $ flip (M.!) lab
+  t <- getType a1
   args <- sequence $ loadString <$> as
   let (as', loads) = unzip args
   let loads' = reverse $ concat loads
@@ -147,7 +238,6 @@ llvmQuad (QCall a1 lab as) = do
         then tail $ tail argStr
         else argStr
 
-  putType a1 t
   return $ loads' ++ [show a1 ++ " = call " ++ t ++ " " ++ show lab ++ argStr']
 
 llvmQuad (QVCall lab as) = do
@@ -168,13 +258,12 @@ llvmQuad (QVCall lab as) = do
   return $ loads' ++ ["call " ++ t ++ " " ++ show lab ++ argStr']
 
 llvmQuad (QPhi a1 rs) = do
-  t <- getType $ fst $ head rs
+  t <- getType a1
 
   let addRule (a, lab) acc = ", [" ++ show a ++ ", "
         ++ (if isFunLab lab then "%0" else "%" ++ show lab) ++ "]" ++ acc
   let rs' = foldr addRule "" rs
 
-  putType a1 t
   return [show a1 ++ " = phi " ++ t ++ (tail rs')]
 
 llvmQuad QNOp = return []
@@ -209,36 +298,53 @@ constType (CInt _) = int
 constType (CString _) = str
 constType CTrue = bool
 constType CFalse = bool
-constType _ = int --DEBUG
+--constType _ = int --DEBUG
+
+
+hasType :: Atom -> LLVMMonad Bool
+hasType a@(Var _) = do
+  typeMap <- gets types
+  return $ M.member a typeMap
+
+hasType _ = return True
 
 
 getType :: Atom -> LLVMMonad String
-getType a = do
+getType a@(Var _) = do
   typeMap <- gets types
-  case M.lookup a typeMap of
-    Nothing -> return $ constType a
-    Just t -> return t
+  return $ (M.!) typeMap a
+
+getType a = return $ constType a
 
 
 putType :: Atom -> String -> LLVMMonad ()
-putType a t = do
-  St str nStr typeMap nLoc <- get
+putType a@(Var _) t = do
+  St str nStr typeMap nLoc inh <- get
   let typeMap' = M.insert a t typeMap
-  put $ St str nStr typeMap' nLoc
+  put $ St str nStr typeMap' nLoc inh
+
+putType _ _ = return ()
+
+
+putInherits :: Atom -> [Atom] -> LLVMMonad ()
+putInherits a as = do
+  St str nStr typeMap nLoc inh <- get
+  let inh' = M.insert a as inh
+  put $ St str nStr typeMap nLoc inh'
 
 
 getFreshVar :: LLVMMonad Atom
 getFreshVar = do
-  St str nStr typeMap nLoc <- get
+  St str nStr typeMap nLoc inh <- get
   let nLoc' = nLoc + 1
-  put $ St str nStr typeMap nLoc'
+  put $ St str nStr typeMap nLoc' inh
   return $ Var $ prefixLLVMTemp ++ show nLoc
 
 getFreshString :: LLVMMonad Global
 getFreshString = do
-  St str nStr typeMap nLoc <- get
+  St str nStr typeMap nLoc inh <- get
   let nStr' = nStr + 1
-  put $ St str nStr' typeMap nLoc
+  put $ St str nStr' typeMap nLoc inh
   return $ Global nStr
 
 
@@ -249,7 +355,7 @@ loadString (CString s) = do
     Nothing -> do
       glob <- getFreshString
       let stringMap' = M.insert s glob stringMap
-      modify $ (\(St _ nStr tM nL) -> St stringMap' nStr tM nL)
+      modify $ (\(St _ nStr tM nL inh) -> St stringMap' nStr tM nL inh)
       return glob
     Just glob -> return glob
 
