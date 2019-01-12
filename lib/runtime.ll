@@ -9,7 +9,7 @@ target triple = "x86_64-pc-linux-gnu"
 @.str = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1
 @.str.2 = private unnamed_addr constant [15 x i8] c"runtime error\0A\00", align 1
 @.str.3 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
-@stderr = external local_unnamed_addr global %struct._IO_FILE*, align 8
+@stdin = external local_unnamed_addr global %struct._IO_FILE*, align 8
 
 ; Function Attrs: nounwind uwtable
 define void @printInt(i32) local_unnamed_addr #0 {
@@ -66,7 +66,7 @@ define i8* @readString() local_unnamed_addr #0 {
   %4 = bitcast i64* %2 to i8*
   call void @llvm.lifetime.start(i64 8, i8* nonnull %4) #7
   store i64 0, i64* %2, align 8, !tbaa !7
-  %5 = load %struct._IO_FILE*, %struct._IO_FILE** @stderr, align 8, !tbaa !5
+  %5 = load %struct._IO_FILE*, %struct._IO_FILE** @stdin, align 8, !tbaa !5
   %6 = call i64 @getline(i8** nonnull %1, i64* nonnull %2, %struct._IO_FILE* %5) #7
   %7 = load i8*, i8** %1, align 8, !tbaa !5
   call void @llvm.lifetime.end(i64 8, i8* nonnull %4) #7

@@ -25,7 +25,7 @@ int readInt() {
 char *readString() {
     char *target = NULL;
     size_t n = 0;
-    getline(&target, &n, stderr);
+    getline(&target, &n, stdin);
     return target;
 }
 

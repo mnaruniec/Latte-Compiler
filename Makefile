@@ -8,7 +8,7 @@ all: deps nodeps
 
 nodeps: lib latc latc_llvm
 
-.PHONY: latc
+.PHONY: lib latc
 
 deps:
 	cabal update
