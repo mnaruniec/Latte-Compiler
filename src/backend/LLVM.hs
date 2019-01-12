@@ -9,6 +9,8 @@ import AbsLatte
 import CommonLatte
 import QuadCode
 
+
+
 type LLVM = [String]
 
 type FunMap = M.Map Label String
@@ -65,22 +67,11 @@ getStringDef (s, global) = [withNull] where
   withNull = (init noNull) ++ "\\00\""
 
 
-llvmFun :: QuadFun -> LLVMMonad LLVM
-llvmFun (topDef@(FnDef _ _ _ args _), qBlocks) = do
-  let header = getFunHeader define topDef
-  sequence_ $ putArgType <$> args
-  sequence_ $ collectTypesBlock <$> qBlocks
-  resolveTypes
-  qBlocks' <- sequence $ llvmBlock <$> qBlocks
-  let qBlocks'' = concat qBlocks'
-  let qBlocks''' = if filter (/= "") qBlocks'' == [] then ["ret void"] else qBlocks''
-  return $ header ++ qBlocks''' ++ ["}", ""]
-
-
 resolveTypes :: LLVMMonad ()
 resolveTypes = do
   inh <- gets inherits
   sequence_ $ resolveTypesTree S.empty <$> M.keys inh
+
 
 resolveTypesTree :: S.Set Atom -> Atom -> LLVMMonad (S.Set Atom, Maybe String)
 resolveTypesTree visited a = do
@@ -162,10 +153,20 @@ collectTypesQuad (QPhi a1 rs) = do
 collectTypesQuad _ = return ()
 
 
-
-
 putArgType :: Arg () -> LLVMMonad ()
 putArgType (Arg _ t (Ident id)) = putType (Var id) $ strType t
+
+
+llvmFun :: QuadFun -> LLVMMonad LLVM
+llvmFun (topDef@(FnDef _ _ _ args _), qBlocks) = do
+  let header = getFunHeader define topDef
+  sequence_ $ putArgType <$> args
+  sequence_ $ collectTypesBlock <$> qBlocks
+  resolveTypes
+  qBlocks' <- sequence $ llvmBlock <$> qBlocks
+  let qBlocks'' = concat qBlocks'
+  let qBlocks''' = if filter (/= "") qBlocks'' == [] then ["ret void"] else qBlocks''
+  return $ header ++ qBlocks''' ++ ["}", ""]
 
 
 llvmBlock :: QuadBlock -> LLVMMonad LLVM
@@ -273,6 +274,10 @@ llvmQuad QNOp = return []
 llvmQuad _ = return []
 
 
+define = True
+declare = False
+
+
 getFunHeader :: Bool -> TopDef () -> LLVM
 getFunHeader define (FnDef _ t (Ident id) args _) = [header] where
   header = beg ++ strType t ++ " @" ++ id ++ args'' ++ end
@@ -295,12 +300,17 @@ isFunLab (LFun _) = True
 isFunLab _ = False
 
 
+int = "i32"
+str = "i8*"
+bool = "i1"
+void = "void"
+
+
 constType :: Atom -> String
 constType (CInt _) = int
 constType (CString _) = str
 constType CTrue = bool
 constType CFalse = bool
---constType _ = int --DEBUG
 
 
 hasType :: Atom -> LLVMMonad Bool
@@ -342,6 +352,7 @@ getFreshVar = do
   put $ St str nStr typeMap nLoc' inh
   return $ Var $ prefixLLVMTemp ++ show nLoc
 
+
 getFreshString :: LLVMMonad Global
 getFreshString = do
   St str nStr typeMap nLoc inh <- get
@@ -370,16 +381,9 @@ loadString (CString s) = do
 loadString a = return (a, [])
 
 
-define = True
-declare = False
-
-int = "i32"
-str = "i8*"
-bool = "i1"
-void = "void"
-
 privConcat :: Label
 privConcat = LFun $ prefixPrivFun ++ "concat"
+
 
 privCopy :: Label
 privCopy = LFun $ prefixPrivFun ++ "copy"
@@ -390,5 +394,4 @@ strType (Int _) = int
 strType (Str _) = str
 strType (Bool _) = bool
 strType (Void _) = void
-
 

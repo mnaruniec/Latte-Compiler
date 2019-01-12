@@ -1,0 +1,31 @@
+Autor: Michał Naruniec
+
+Archiwum zawiera ten plik tzn. README, Makefile oraz katalogi lib i src.
+
+Program korzysta z kompilatora ghc w wersji 8., biblioteki mtl
+oraz biblioteki dlist do efektywnego zastosowania monady Writer.
+Na maszynie students do kompilacji używane są programy
+z folderu /home/students/inf/PUBLIC/MRJP/ghc-8.2.2/bin.
+Lekser, parser, składnia abstrakcyjna, szablon itp. zostały wygenerowane przy pomocy biblioteki BNFC.
+
+Wywołanie polecenia make w katalogu głównym projektu powoduje zaktualizowanie informacji
+o pakietach programu cabal oraz pobranie pakietów mtl i dlist w najnowszej dostępnej wersji.
+Polecenie make nodeps pomija te etapy.
+Następnie tworzone są odpowiednie pliki wykonywalne, tzn. latc i jego kopia latc_llvm.
+
+Katalog lib zawiera pliki runtime.bc, runtime.ll i runtime.c.
+runtime.ll został wygenerowany z runtime.c, ale do funkcji copy i concat zostały ręcznie dodane prefiksy ".priv.".
+runtime.bc jest rekompilowany podczas kompilacji całego projektu.
+
+Katalog src zawiera 3 foldery - common z plikami wspólnymi,
+a także frontend i backend ze źródłami odpowiednich modułów.
+
+
+Produkowany kod jest w postaci SSA, bez jawnego alokowania pamięci na stosie
+Nie zostały zaimplementowane rozszerzenia, jednak zostały zaimplementowane optymalizacje:
+-constant folding
+-copy propagation
+-dead code elimination
+-unreachable code elimination
+
+

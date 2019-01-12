@@ -10,8 +10,6 @@ import Control.Monad ( when )
 
 import LexLatte
 import ParLatte
-import SkelLatte
-import PrintLatte
 import AbsLatte
 
 import CommonLatte
