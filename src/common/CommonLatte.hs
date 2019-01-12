@@ -5,6 +5,8 @@ module CommonLatte where
 
 import qualified Data.Map.Strict as M
 import Control.Monad.Reader
+import Data.Int
+import Data.Char
 
 import AbsLatte
 
@@ -16,6 +18,15 @@ maxInt :: Integer
 maxInt = 2 ^ 31 - 1
 minInt :: Integer
 minInt = -(2 ^ 31)
+
+trimInteger :: Integer -> Integer
+trimInteger i = toInteger i' where
+  i' :: Int32
+  i' = fromIntegral i
+
+checkIdent :: String -> Bool
+checkIdent = all checkChar where
+  checkChar c = isAscii c && (isLetter c || isDigit c || c == '_')
 
 
 dividorShadow :: Char

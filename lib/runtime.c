@@ -3,6 +3,22 @@
 #include <string.h>
 
 
+void printInt(int n);
+
+void printString(char *s);
+
+void error();
+
+int readInt();
+
+char *readString();
+
+char *concat(char *s1, char *s2);
+
+char *copy(char *src);
+
+
+
 void printInt(int n) {
     printf("%d\n", n);
 }
@@ -19,13 +35,17 @@ void error() {
 int readInt() {
     int n;
     scanf("%d", &n);
+    readString();
     return n;
 }
 
 char *readString() {
     char *target = NULL;
     size_t n = 0;
-    getline(&target, &n, stdin);
+    size_t got = getline(&target, &n, stdin);
+    if (got >= 1 && target[got - 1] == '\n') {
+        target[got - 1] = (char)0;
+    }
     return target;
 }
 

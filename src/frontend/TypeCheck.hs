@@ -75,6 +75,8 @@ checkProgram (Program _ topDefs) = do
           args
         when (id == "main" && (strip t /= Int () || args /= [])) $
           tellLoc loc "The main function should be of type () -> int!"
+        when (not $ checkIdent id) $
+          tellLoc loc $ "Incorrect function name: " ++ id ++ "!"
 
     fnDefToType :: TopDef Location -> (Ident, Type ())
     fnDefToType (FnDef _ t id args _) = (id, Fun () (strip t) argTypes) where
@@ -138,18 +140,27 @@ checkStmt (CondElse _ expr stmt1 stmt2) = do
   assertType (Bool ()) expr
   (_, ret1) <- checkStmt stmt1
   (_, ret2) <- checkStmt stmt2
-  returnE $ ret1 && ret2
+  returnE $
+    case expr of
+      ELitTrue _ -> ret1
+      ELitFalse _ -> ret2
+      otherwise -> ret1 && ret2
 
 checkStmt (Cond _ expr stmt) = do
   assertType (Bool ()) expr
-  checkStmt stmt
-  returnE False
+  (_, ret) <- checkStmt stmt
+  returnE $
+    case expr of
+      ELitTrue _ -> ret
+      otherwise -> False
 
 checkStmt (While _ expr stmt) = do
   assertType (Bool ()) expr
   checkStmt stmt
-  returnE False
-
+  returnE $
+    case expr of
+      ELitTrue _ -> True -- consider infinite loop as always correct
+      otherwise -> False
 
 checkStmt (Decl _ _ []) = returnE False
 
@@ -164,6 +175,8 @@ checkStmt (Decl l t (item:tail)) = do
     Init loc (Ident id) expr -> do
       assertType t' expr
       return (loc, id)
+
+  when (not $ checkIdent id) $ lift $ tellLoc loc $ "Incorrect variable name: " ++ id ++ "!"
 
   case vEnv !? (Ident id) of
     Just (_, True) -> lift $ tellLoc loc $ "Found duplicate variable " ++ id ++ " declaration in a single block!"

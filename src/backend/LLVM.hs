@@ -72,7 +72,9 @@ llvmFun (topDef@(FnDef _ _ _ args _), qBlocks) = do
   sequence_ $ collectTypesBlock <$> qBlocks
   resolveTypes
   qBlocks' <- sequence $ llvmBlock <$> qBlocks
-  return $ header ++ concat qBlocks' ++ ["}", ""]
+  let qBlocks'' = concat qBlocks'
+  let qBlocks''' = if filter (/= "") qBlocks'' == [] then ["ret void"] else qBlocks''
+  return $ header ++ qBlocks''' ++ ["}", ""]
 
 
 resolveTypes :: LLVMMonad ()

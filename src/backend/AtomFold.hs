@@ -219,7 +219,7 @@ collectSubsQuad (QAss a1 a2) = do
   modify $ M.insert a1 a2
 
 collectSubsQuad (QNeg a1 (CInt n)) = do
-  modify $ M.insert a1 (CInt (-n))
+  modify $ M.insert a1 (CInt $ trimInteger (-n))
 
 collectSubsQuad (QOp a1 (CInt n1) op (CInt n2)) = do
   let (f, fpe) = case op of
@@ -229,7 +229,7 @@ collectSubsQuad (QOp a1 (CInt n1) op (CInt n2)) = do
         QDiv -> (div, True)
         QMod -> (mod, True)
   when ((not fpe) || n2 /= 0) $ do
-    modify $ M.insert a1 $ CInt $ f n1 n2
+    modify $ M.insert a1 $ CInt $ trimInteger $ f n1 n2
 
 collectSubsQuad (QOp a1 (CString s1) QCon (CString s2)) = do
   modify $ M.insert a1 $ CString $ s1 ++ s2
