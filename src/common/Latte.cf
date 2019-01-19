@@ -48,6 +48,10 @@ While.     Stmt ::= "while" "(" Expr ")" Stmt ;
 
 SExp.      Stmt ::= Expr  ";" ;
 
+AssArr.    Stmt ::= Ident "[" Expr "]" "=" Expr  ";" ;
+
+ForEach.   Stmt ::= "for" "(" Type Ident ":" Ident ")" Stmt  ;
+
 -- Types ---------------------------------------------------
 
 Int.       Type ::= "int" ;
@@ -58,11 +62,17 @@ Bool.      Type ::= "boolean" ;
 
 Void.      Type ::= "void" ;
 
+Arr.       Type ::= Type "[" "]" ;
+
 internal   Fun. Type ::= Type "(" [Type] ")" ;
 
 separator  Type "," ;
 
 -- Expressions ---------------------------------------------
+
+EArrNew.   Expr6 ::= "new" Type "[" Expr "]" ;
+
+EArrAcc.   Expr6 ::= Ident "[" Expr "]" ;
 
 EVar.      Expr6 ::= Ident ;
 

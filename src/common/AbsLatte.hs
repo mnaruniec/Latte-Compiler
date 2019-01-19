@@ -45,6 +45,8 @@ data Stmt a
     | CondElse a (Expr a) (Stmt a) (Stmt a)
     | While a (Expr a) (Stmt a)
     | SExp a (Expr a)
+    | AssArr a Ident (Expr a) (Expr a)
+    | ForEach a (Type a) Ident Ident (Stmt a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor Stmt where
@@ -61,6 +63,8 @@ instance Functor Stmt where
         CondElse a expr stmt1 stmt2 -> CondElse (f a) (fmap f expr) (fmap f stmt1) (fmap f stmt2)
         While a expr stmt -> While (f a) (fmap f expr) (fmap f stmt)
         SExp a expr -> SExp (f a) (fmap f expr)
+        AssArr a ident expr1 expr2 -> AssArr (f a) ident (fmap f expr1) (fmap f expr2)
+        ForEach a type_ ident1 ident2 stmt -> ForEach (f a) (fmap f type_) ident1 ident2 (fmap f stmt)
 data Item a = NoInit a Ident | Init a Ident (Expr a)
   deriving (Eq, Ord, Show, Read)
 
@@ -69,7 +73,12 @@ instance Functor Item where
         NoInit a ident -> NoInit (f a) ident
         Init a ident expr -> Init (f a) ident (fmap f expr)
 data Type a
-    = Int a | Str a | Bool a | Void a | Fun a (Type a) [Type a]
+    = Int a
+    | Str a
+    | Bool a
+    | Void a
+    | Arr a (Type a)
+    | Fun a (Type a) [Type a]
   deriving (Eq, Ord, Show, Read)
 
 instance Functor Type where
@@ -78,9 +87,12 @@ instance Functor Type where
         Str a -> Str (f a)
         Bool a -> Bool (f a)
         Void a -> Void (f a)
+        Arr a type_ -> Arr (f a) (fmap f type_)
         Fun a type_ types -> Fun (f a) (fmap f type_) (map (fmap f) types)
 data Expr a
-    = EVar a Ident
+    = EArrNew a (Type a) (Expr a)
+    | EArrAcc a Ident (Expr a)
+    | EVar a Ident
     | ELitInt a Integer
     | ELitTrue a
     | ELitFalse a
@@ -98,6 +110,8 @@ data Expr a
 
 instance Functor Expr where
     fmap f x = case x of
+        EArrNew a type_ expr -> EArrNew (f a) (fmap f type_) (fmap f expr)
+        EArrAcc a ident expr -> EArrAcc (f a) ident (fmap f expr)
         EVar a ident -> EVar (f a) ident
         ELitInt a integer -> ELitInt (f a) integer
         ELitTrue a -> ELitTrue (f a)
