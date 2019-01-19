@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module TypeCheck where
 
 import AbsLatte
@@ -20,10 +21,11 @@ data Env = Env {pEnv :: PEnv, vEnv :: VEnv, curr :: (Ident, Type ())}
 type TypeMonad a = ReaderT Env (Writer ErrorList) a
 
 
-tellL :: [a] -> Writer (D.DList [a]) ()
+tellL :: MonadWriter (D.DList [a]) m => [a] -> m ()
 tellL = tell . D.singleton
 
-tellLoc :: Location -> String -> Writer ErrorList ()
+
+tellLoc :: MonadWriter ErrorList m => Location -> String -> m ()
 tellLoc Nothing l = tellL l
 tellLoc (Just (line, col)) l = tellL $ "Line " ++ show line ++ ":" ++ show col ++ ": " ++ l
 
@@ -64,11 +66,14 @@ checkProgram (Program _ topDefs) = do
     checkSignature :: TopDef Location -> Writer ErrorList ()
     checkSignature (FnDef loc t (Ident id) args _) =
       let
-        f' (Arg loc' t (Ident id')) =
+        checkParam (Arg loc' t (Ident id')) = do
+          checkTypeCorrect t
           when (strip t == Void ()) $
             tellLoc loc' $ "Function " ++ id ++ " has void argument " ++ id' ++ "!"
+
       in do
-        sequence_ $ f' <$> args
+        checkTypeCorrect t
+        sequence_ $ checkParam <$> args
         checkDuplicates (\(Arg _ _ id') -> id')
           (\(Arg loc' _ (Ident id'))
             -> tellLoc loc' $ "Found duplicate argument name " ++ id' ++ " in function " ++ id ++ "!")
@@ -117,7 +122,7 @@ checkStmt (Empty _) = returnE False
 
 checkStmt (VRet loc) = do
   (Ident id, t) <- asks curr
-  when (t /= Void ()) $ lift $ tellLoc loc $
+  when (t /= Void ()) $ tellLoc loc $
     "Returning without value from function " ++ id ++
       " of return type " ++ show t ++ "!"
   returnE True
@@ -125,7 +130,7 @@ checkStmt (VRet loc) = do
 checkStmt (Ret loc expr) = do
   (Ident id, t) <- asks curr
   t' <- checkExpr expr
-  when (t /= t') $ lift $ tellLoc loc $
+  when (t /= t') $ tellLoc loc $
     "Returning value of type " ++ show t' ++
       " from function " ++ id ++ " of return type " ++ show t ++ "!"
   returnE True
@@ -165,8 +170,9 @@ checkStmt (While _ expr stmt) = do
 checkStmt (Decl _ _ []) = returnE False
 
 checkStmt (Decl l t (item:tail)) = do
+  checkTypeCorrect t
   let t' = strip t
-  when (t' == Void ()) $ lift $ tellLoc l $ "Cannot create variables of type void!"
+  when (t' == Void ()) $ tellLoc l $ "Cannot create variables of type void!"
 
   Env pEnv vEnv curr <- ask
 
@@ -176,10 +182,10 @@ checkStmt (Decl l t (item:tail)) = do
       assertType t' expr
       return (loc, id)
 
-  when (not $ checkIdent id) $ lift $ tellLoc loc $ "Incorrect variable name: " ++ id ++ "!"
+  when (not $ checkIdent id) $ tellLoc loc $ "Incorrect variable name: " ++ id ++ "!"
 
   case vEnv !? (Ident id) of
-    Just (_, True) -> lift $ tellLoc loc $ "Found duplicate variable " ++ id ++ " declaration in a single block!"
+    Just (_, True) -> tellLoc loc $ "Found duplicate variable " ++ id ++ " declaration in a single block!"
     otherwise -> return ()
 
   let vEnv' = M.insert (Ident id) (t', True) vEnv
@@ -191,7 +197,7 @@ checkStmt (Ass loc (Ident id) expr) = do
   vEnv <- asks vEnv
   case vEnv !? Ident id of
     Nothing -> do
-      lift $ tellLoc loc $ "Variable " ++ id ++ " not declared!"
+      tellLoc loc $ "Variable " ++ id ++ " not declared!"
       checkExpr expr
       return ()
     Just (t, _) -> do
@@ -203,9 +209,9 @@ checkStmt (Incr loc (Ident id)) = do
   vEnv <- asks vEnv
   case vEnv !? Ident id of
     Nothing -> do
-      lift $ tellLoc loc $ "Variable " ++ id ++ " not declared!"
+      tellLoc loc $ "Variable " ++ id ++ " not declared!"
     Just (t, _) -> do
-       when (t /= Int ()) $ lift $ tellLoc loc $
+       when (t /= Int ()) $ tellLoc loc $
         "Cannot increment variable " ++ id ++ " of type " ++ show t ++ "!"
   returnE False
 
@@ -214,37 +220,89 @@ checkStmt (Decr loc (Ident id)) = do
   vEnv <- asks vEnv
   case vEnv !? Ident id of
     Nothing -> do
-      lift $ tellLoc loc $ "Variable " ++ id ++ " not declared!"
+      tellLoc loc $ "Variable " ++ id ++ " not declared!"
     Just (t, _) -> do
-       when (t /= Int ()) $ lift $ tellLoc loc $
+       when (t /= Int ()) $ tellLoc loc $
         "Cannot decrement variable " ++ id ++ " of type " ++ show t ++ "!"
   returnE False
+
+
+checkStmt (AssArr loc id index e2) = do
+  assertType (Int ()) index
+  t <- assertArrayVar loc id
+  assertType t e2
+  returnE False
+
+
+checkStmt (ForEach loc t (Ident elId) (Ident arrId) stmt) = do
+  t' <- assertArrayVar loc (Ident arrId)
+  when (t' /= strip t) $ tellLoc loc $
+    "Iterator " ++ elId ++ " of type " ++ show (strip t)
+      ++ " for array " ++ arrId ++ " of type " ++ show t' ++ "!"
+  Env pEnv vEnv curr <- ask
+  let vEnv' = M.insert (Ident elId) (strip t, True) vEnv
+  local (\_ -> Env pEnv vEnv' curr) $ checkStmt stmt
+  returnE False
+
+
+checkTypeCorrect :: MonadWriter ErrorList m => Type Location -> m ()
+checkTypeCorrect (Arr loc (Void _)) = do
+  tellLoc loc $ "Void arrays are not permitted!"
+
+checkTypeCorrect (Arr loc (Arr _ _)) = do
+  tellLoc loc $ "Multi-dimentional arrays are not permitted!"
+
+checkTypeCorrect _ = return ()
+
+
+assertPrimitive :: MonadWriter ErrorList m => Type Location -> m ()
+assertPrimitive (Arr loc _) = do
+  tellLoc loc $ "Expected primitive type!"
+
+assertPrimitive _ = return ()
+
+
+assertArrayVar :: Location -> Ident -> TypeMonad (Type ())
+assertArrayVar loc (Ident id) = do
+  vEnv <- asks vEnv
+  case vEnv !? (Ident id) of
+    Nothing -> do
+      tellLoc loc $
+        "Array " ++ id ++ " not defined!\n"
+          ++ "Assuming int[] for further checking."
+      return $ Int ()
+    Just ((Arr () t), _) -> return t
+    Just _ -> do
+      tellLoc loc $
+        "Variable " ++ id ++ " is not an array!\n"
+          ++ "Treated like int[] for further checking."
+      return $ Int ()
 
 
 assertAny :: [Type ()] -> Expr Location -> TypeMonad (Type ())
 assertAny ts expr = do
   t <- checkExpr expr
-  when (not $ elem t ts) $ lift $ tellLoc (getLoc expr) $
+  when (not $ elem t ts) $ tellLoc (getLoc expr) $
     "Expected expression of one of types: " ++ show ts ++ ", but received expression of type " ++ show t ++ "!"
   return t
 
 assertType :: Type () -> Expr Location -> TypeMonad ()
 assertType t expr = do
   t' <- checkExpr expr
-  when (t /= t') $ lift $ tellLoc (getLoc expr) $
+  when (t /= t') $ tellLoc (getLoc expr) $
     "Expected expression of type " ++ show t ++ " but received expression of type " ++ show t' ++ "!"
 
 
 assertNotVoid :: Expr Location -> TypeMonad (Type ())
 assertNotVoid expr = do
   t <- checkExpr expr
-  when (t == Void ()) $ lift $ tellLoc (getLoc expr) $
+  when (t == Void ()) $ tellLoc (getLoc expr) $
     "Expression cannot have type void!"
   return t
 
-assertEqu :: Location -> Type () -> Type () -> TypeMonad ()
+assertEqu :: MonadWriter ErrorList m => Location -> Type () -> Type () -> m ()
 assertEqu loc t1 t2 =
-  when (t1 /= t2) $ lift $ tellLoc loc $
+  when (t1 /= t2) $ tellLoc loc $
     "Both expressions should have the same type, but left is of type "
           ++ show t1 ++ " and right of type " ++ show t2 ++ "!"
 
@@ -255,7 +313,7 @@ checkExpr (ELitTrue _) = return $ Bool ()
 checkExpr (ELitFalse _) = return $ Bool ()
 
 checkExpr (ELitInt loc val) = do
-  when (val < minInt || val > maxInt) $ lift $ tellLoc loc $
+  when (val < minInt || val > maxInt) $ tellLoc loc $
     "Integer constant should be between " ++ show minInt ++
       " and " ++ show maxInt ++ "!"
   return $ Int ()
@@ -267,7 +325,7 @@ checkExpr (EVar loc (Ident id)) = do
   vEnv <- asks vEnv
   case vEnv !? (Ident id) of
     Nothing -> do
-      lift $ tellLoc loc $
+      tellLoc loc $
         "Variable " ++ id ++ " not defined!\n"
           ++ "Assuming int for further checking."
       return $ Int ()
@@ -279,20 +337,20 @@ checkExpr (EApp loc (Ident id) args) = do
   pEnv <- asks pEnv
   case pEnv !? Ident id of
     Nothing -> do
-      lift $ tellLoc loc $
+      tellLoc loc $
         "Function " ++ id ++ " not defined!\n"
           ++ "Assuming return value int for further checking."
       return $ Int ()
     Just (Fun () t params) -> do
       let lParams = length params
-      when (lParams /= lArgs) $ lift $ tellLoc loc $
+      when (lParams /= lArgs) $ tellLoc loc $
         "Function " ++ id ++ " takes " ++ show lParams ++
           " arguments, but is called with " ++ show lArgs ++ "!"
       sequence_ $ checkArg <$> (zip4 [1..] args argTypes params)
       return t
   where
     checkArg (idx, expr, argType, paramType) =
-      when (argType /= paramType) $ lift $ tellLoc (getLoc expr) $
+      when (argType /= paramType) $ tellLoc (getLoc expr) $
         "Argument number " ++ show idx ++ " of function " ++ id ++
           " should be of type " ++ show paramType ++ ", but is " ++ show argType ++ "!"
 
@@ -351,8 +409,15 @@ checkExpr (EAnd _ e1 e2) = do
   return $ Bool ()
 
 
+checkExpr (EArrNew _ t expr) = do
+  assertPrimitive t
+  assertType (Int ()) expr
+  return $ Arr () $ strip t
 
 
+checkExpr (EArrAcc loc id expr) = do
+  assertType (Int ()) expr
+  assertArrayVar loc id
 
 
 

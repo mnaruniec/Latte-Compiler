@@ -86,6 +86,8 @@ getLoc (EAdd l _ _ _) = l
 getLoc (ERel l _ _ _) = l
 getLoc (EAnd l _ _) = l
 getLoc (EOr l _ _) = l
+getLoc (EArrAcc l _ _) = l
+getLoc (EArrNew l _ _) = l
 
 
 builtInDefs :: [TopDef Location]
