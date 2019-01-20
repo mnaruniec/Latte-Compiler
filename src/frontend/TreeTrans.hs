@@ -177,6 +177,10 @@ transExpr (EArrAcc _ id expr) = do
   (id', Arr _ t) <- getInfo id
   return $ (t, EArrAcc () id' expr')
 
+transExpr (EArrLen _ id) = do
+  id' <- getNewId id
+  return $ (Int (), EArrLen _ id')
+
 transExpr (EVar _ id) = do
   (id', t) <- getInfo id
   return $ (t, EVar () $ id')

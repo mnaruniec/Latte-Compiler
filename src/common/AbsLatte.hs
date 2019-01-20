@@ -92,6 +92,7 @@ instance Functor Type where
 data Expr a
     = EArrNew a (Type a) (Expr a)
     | EArrAcc a Ident (Expr a)
+    | EArrLen a Ident
     | EVar a Ident
     | ELitInt a Integer
     | ELitTrue a
@@ -112,6 +113,7 @@ instance Functor Expr where
     fmap f x = case x of
         EArrNew a type_ expr -> EArrNew (f a) (fmap f type_) (fmap f expr)
         EArrAcc a ident expr -> EArrAcc (f a) ident (fmap f expr)
+        EArrLen a ident -> EArrLen (f a) ident
         EVar a ident -> EVar (f a) ident
         ELitInt a integer -> ELitInt (f a) integer
         ELitTrue a -> ELitTrue (f a)

@@ -74,6 +74,8 @@ EArrNew.   Expr6 ::= "new" Type "[" Expr "]" ;
 
 EArrAcc.   Expr6 ::= Ident "[" Expr "]" ;
 
+EArrLen.   Expr6 ::= Ident "." "length" ;
+
 EVar.      Expr6 ::= Ident ;
 
 ELitInt.   Expr6 ::= Integer ;

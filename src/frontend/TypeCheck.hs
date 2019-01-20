@@ -420,4 +420,7 @@ checkExpr (EArrAcc loc id expr) = do
   assertArrayVar loc id
 
 
+checkExpr (EArrLen loc id) = do
+  assertArrayVar loc id
+  return $ Int ()
 
