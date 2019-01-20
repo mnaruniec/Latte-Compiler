@@ -97,6 +97,10 @@ data Quad =
   | QCall Atom Label [Atom]
   | QVCall Label [Atom]
   | QPhi Atom [(Atom, Label)]
+  | QArrAss Atom Atom Atom
+  | QArrAcc Atom Atom Atom
+  | QArrLen Atom Atom
+  | QArrNew Atom (Type ()) Atom
   deriving (Eq, Ord)
 
 instance Show Quad where
@@ -113,7 +117,12 @@ instance Show Quad where
   show (QCall a l as) = show a ++ " := " ++ show l ++ "(" ++ show as ++ ")"
   show (QVCall l as) = show l ++ "(" ++ show as ++ ")"
   show (QPhi a rs) = show a ++ " := phi " ++ show rs
-
+  show (QArrAss arr idx a) =
+    show arr ++ "[" ++ show idx ++ "] := " ++ show a
+  show (QArrAcc a arr idx) =
+    show a ++ " := " ++ show arr ++ "[" ++ show idx ++ "]"
+  show (QArrLen a1 a2) = show a1 ++ " := " ++ show a2 ++ ".length"
+  show (QArrNew a1 t a2) = show a1 ++ " := new " ++ show t ++ "[" ++ show a2 ++ "]"
 
 data LQuad =
     NoL Quad

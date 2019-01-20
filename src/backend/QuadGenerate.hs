@@ -206,6 +206,26 @@ quadExpr mLab (EApp () (Ident id) es) = do
 
     quadArg mLab [] = return (mLab, [])
 
+
+
+quadExpr mLab (EArrNew () t expr) = do
+  (mLab', a) <- quadExpr mLab expr
+  v <- newVar
+  emitMLab mLab' $ QArrNew v t a
+  return (Nothing, v)
+
+quadExpr mLab (EArrAcc () (Ident id) expr) = do
+  (mLab', a) <- quadExpr mLab expr
+  v <- newVar
+  emitMLab mLab' $ QArrAcc v (Var id) a
+  return (Nothing, v)
+
+quadExpr mLab (EArrLen ()
+
+
+
+
+
 quadExpr mLab (ELitTrue ()) = return (mLab, CTrue)
 
 quadExpr mLab (ELitFalse ()) = return (mLab, CFalse)
