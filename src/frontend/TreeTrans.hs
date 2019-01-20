@@ -90,6 +90,22 @@ transBlock (Block _ stmts) = do
 transStmt :: Stmt Location -> VarsMonad (Env, Stmt ())
 transStmt (BStmt _ block) = transBlock block >>= returnE . (BStmt ())
 
+transStmt (AssArr _ id index expr) = do
+  (_, index') <- transExpr index
+  (_, expr') <- transExpr expr
+  id' <- getNewId id
+  returnE $ AssArr () id' index' expr'
+
+transStmt (ForEach _ t elId arrId stmt) = do
+  arrId' <- getNewId arrId
+  n <- getNext elId
+  let elId' = newId elId n
+  Env pEnv vEnv <- ask
+  let vEnv' = M.insert elId (n, strip t) vEnv
+  let env' = Env pEnv vEnv'
+  (_, stmt') <- local (\_ -> env') $ transStmt stmt
+  returnE $ ForEach () (strip t) elId' arrId' stmt'
+
 transStmt (Ass _ id expr) = do
   (_, expr') <- transExpr expr
   id' <- getNewId id
@@ -150,6 +166,16 @@ transStmt stmt = returnE $ strip stmt
 
 
 transExpr :: Expr Location -> VarsMonad (Type(), Expr ())
+
+transExpr (EArrNew _ t expr) = do
+  (_, expr') <- transExpr expr
+  let t' = strip t
+  return $ (Arr () t', EArrNew () t' expr')
+
+transExpr (EArrAcc _ id expr) = do
+  (_, expr') <- transExpr expr
+  (id', Arr _ t) <- getInfo id
+  return $ (t, EArrAcc () id' expr')
 
 transExpr (EVar _ id) = do
   (id', t) <- getInfo id

@@ -3,7 +3,7 @@ module BackEnd where
 import AbsLatte
 
 import CommonLatte
-
+import PrintLatte
 
 import QuadCode
 import QuadGenerate
@@ -22,6 +22,7 @@ import LLVM
 
 backEnd :: Program () -> IO String
 backEnd p = do
+      putStrLn $ printTree p
       let (ctx, quadCode) = genQuad p
       let blockFuns = quadToBlocks ctx quadCode
       let blockFuns' = removeNops blockFuns
